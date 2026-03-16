@@ -5,14 +5,80 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 
 
-class GLWidget(QOpenGLWidget):
+class StartMenuDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("3D Preview - Start Menu")
+        self.setModal(True)
+        self.resize(300, 250)
+
+        layout = QtWidgets.QVBoxLayout()
+
+        self.label = QtWidgets.QLabel("Select window mode:")
+        layout.addWidget(self.label)
+
+        self.windowed_radio = QtWidgets.QRadioButton("Windowed")
+        self.windowed_radio.setChecked(True)
+        layout.addWidget(self.windowed_radio)
+
+        self.fullscreen_radio = QtWidgets.QRadioButton("Fullscreen")
+        layout.addWidget(self.fullscreen_radio)
+
+        self.borderless_radio = QtWidgets.QRadioButton("Borderless Window")
+        layout.addWidget(self.borderless_radio)
+
+        self.card_label = QtWidgets.QLabel("Select card type:")
+        layout.addWidget(self.card_label)
+
+        self.card_combo = QtWidgets.QComboBox()
+        self.card_combo.addItems(["CR80", "CR79", "CR100", "CR90", "CR50"])
+        self.card_combo.setCurrentText("CR80")
+        layout.addWidget(self.card_combo)
+
+        button_layout = QtWidgets.QHBoxLayout()
+        self.start_button = QtWidgets.QPushButton("Start")
+        self.start_button.clicked.connect(self.accept)
+        button_layout.addWidget(self.start_button)
+
+        self.exit_button = QtWidgets.QPushButton("Exit")
+        self.exit_button.clicked.connect(self.reject)
+        button_layout.addWidget(self.exit_button)
+
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+
+    def get_selected_mode(self):
+        if self.fullscreen_radio.isChecked():
+            return "fullscreen"
+        elif self.borderless_radio.isChecked():
+            return "borderless"
+        else:
+            return "windowed"
+
+    def get_selected_card_type(self):
+        return self.card_combo.currentText()
+
+
+class GLWidget(QOpenGLWidget):
+    def __init__(self, card_type="CR80", parent=None):
         # Initialize the OpenGL widget and default rotation angles
         super().__init__(parent)
         self.rotation = [0, 0, 0]
         self.camera_dist = 100.0  # camera distance (bird-eye zoom)
-        self.corner_radius = 3.0  # mm, requested rounded corner radius
+        self.set_card_dimensions(card_type)
         self.quadric = None
+
+    def set_card_dimensions(self, card_type):
+        # Set dimensions based on card type (in mm)
+        dimensions = {
+            "CR80": (85.6, 53.98, 0.76),
+            "CR79": (79.0, 50.0, 0.76),
+            "CR100": (100.0, 62.0, 0.76),
+            "CR90": (90.0, 55.0, 0.76),
+            "CR50": (50.0, 30.0, 0.76)
+        }
+        self.card_w, self.card_h, self.card_t = dimensions.get(card_type, (85.6, 53.98, 0.76))
+        self.corner_radius = 3.0  # mm, rounded corner radius (assuming same for all)
 
     def initializeGL(self):
         # Called once when GL context is ready; set clear color and depth buffer
@@ -25,7 +91,7 @@ class GLWidget(QOpenGLWidget):
         glViewport(0, 0, w, h)
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        gluPerspective(45, w / h if h != 0 else 1, 0.1, 100.0)
+        gluPerspective(45, w / h if h != 0 else 1, 0.1, 1000.0)
         glMatrixMode(GL_MODELVIEW)
 
     def paintGL(self):
@@ -40,9 +106,9 @@ class GLWidget(QOpenGLWidget):
         self.draw_card()
 
     def draw_card(self):
-        # Draw a CR80 PVC card (85.6x53.98 mm, 0.76 mm thick) with 3 mm rounded corners
-        corner_radius = 3.0
-        card_w, card_h, card_t = 85.6, 53.98, 0.76
+        # Draw a PVC card with specified dimensions and 3 mm rounded corners
+        corner_radius = self.corner_radius
+        card_w, card_h, card_t = self.card_w, self.card_h, self.card_t
         hx, hy, hz = card_w / 2.0, card_h / 2.0, card_t / 2.0
         steps_per_corner = 16
 
@@ -113,21 +179,34 @@ class GLWidget(QOpenGLWidget):
             return
         # Adjust by sensitivity (smaller increments)
         self.camera_dist -= delta * 0.1
-        self.camera_dist = max(20.0, min(300.0, self.camera_dist))
+        self.camera_dist = max(20.0, min(500.0, self.camera_dist))
         self.update()
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
+    def __init__(self, mode="windowed", card_type="CR80"):
         # Main window containing the GL widget
         super().__init__()
         self.setWindowTitle("3D Preview")
         self.setGeometry(100, 100, 800, 600)
-        self.gl_widget = GLWidget()
+        self.gl_widget = GLWidget(card_type)
         self.setCentralWidget(self.gl_widget)
+
+        if mode == "fullscreen":
+            self.showFullScreen()
+        elif mode == "borderless":
+            self.setWindowFlags(QtCore.Qt.FramelessWindowHint)
+            self.show()
+        else:
+            self.show()
 
 if __name__ == "__main__":
     # Standard Qt application bootstrap
     app = QtWidgets.QApplication([])
-    window = MainWindow()
-    window.show()
-    app.exec()  
+    dialog = StartMenuDialog()
+    if dialog.exec() == QtWidgets.QDialog.Accepted:
+        mode = dialog.get_selected_mode()
+        card_type = dialog.get_selected_card_type()
+        window = MainWindow(mode, card_type)
+        app.exec()
+    else:
+        app.quit()  

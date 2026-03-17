@@ -80,6 +80,11 @@ class GLWidget(QOpenGLWidget):
         self.card_w, self.card_h, self.card_t = dimensions.get(card_type, (85.6, 53.98, 0.76))
         self.corner_radius = 3.0  # mm, rounded corner radius (assuming same for all)
 
+    def set_card_type(self, card_type):
+        # Change the card type and update dimensions
+        self.set_card_dimensions(card_type)
+        self.update()  # Redraw the scene
+
     def initializeGL(self):
         # Called once when GL context is ready; set clear color and depth buffer
         glClearColor(0.5, 0.5, 0.5, 1.0)
@@ -187,10 +192,40 @@ class MainWindow(QtWidgets.QMainWindow):
         # Main window containing the GL widget
         super().__init__()
         self.setWindowTitle("3D Preview")
-        self.setGeometry(100, 100, 800, 600)
-        self.gl_widget = GLWidget(card_type)
-        self.setCentralWidget(self.gl_widget)
+        self.setGeometry(100, 100, 1000, 600)  # Wider for sidebar
 
+        # Create central widget and layout
+        central_widget = QtWidgets.QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QtWidgets.QHBoxLayout(central_widget)
+
+        # Create sidebar
+        self.sidebar = QtWidgets.QWidget()
+        self.sidebar.setFixedWidth(200)
+        self.sidebar.setStyleSheet("background-color: #f0f0f0; border-right: 1px solid #ccc;")
+        sidebar_layout = QtWidgets.QVBoxLayout(self.sidebar)
+
+        # Card type selector in sidebar
+        card_label = QtWidgets.QLabel("Card Type:")
+        sidebar_layout.addWidget(card_label)
+
+        self.card_combo = QtWidgets.QComboBox()
+        self.card_combo.addItems(["CR80", "CR79", "CR100", "CR90", "CR50"])
+        self.card_combo.setCurrentText(card_type)
+        self.card_combo.currentTextChanged.connect(self.on_card_type_changed)
+        sidebar_layout.addWidget(self.card_combo)
+
+        # Add stretch to push items to top
+        sidebar_layout.addStretch()
+
+        # Add sidebar to main layout
+        main_layout.addWidget(self.sidebar)
+
+        # Create GL widget
+        self.gl_widget = GLWidget(card_type)
+        main_layout.addWidget(self.gl_widget)
+
+        # Set window mode
         if mode == "fullscreen":
             self.showFullScreen()
         elif mode == "borderless":
@@ -198,6 +233,17 @@ class MainWindow(QtWidgets.QMainWindow):
             self.show()
         else:
             self.show()
+
+    def on_card_type_changed(self, new_type):
+        # Update the card type in GL widget
+        self.gl_widget.set_card_type(new_type)
+
+    def keyPressEvent(self, event):
+        # Handle ESC key to close the program
+        if event.key() == QtCore.Qt.Key_Escape:
+            self.close()
+        else:
+            super().keyPressEvent(event)
 
 if __name__ == "__main__":
     # Standard Qt application bootstrap

@@ -13,6 +13,9 @@ Po potvrzení volby se otevře hlavní okno s 3D náhledem karty.
 Karta má zaoblené rohy, které jsou generovány pomocí matematických funkcí (sin, cos).
 Uživatel může kartu otáčet pomocí pohybu myši.
 Pomocí kolečka myši lze přibližovat nebo oddalovat kameru.
+Nově byl přidán postranní panel (sidebar) s možností změny typu karty za běhu aplikace.
+Uživatel může program ukončit klávesou ESC.
+
 Technická část
 Program je napsán v jazyce Python.
 Grafické rozhraní je vytvořeno pomocí knihovny PySide6.
@@ -22,8 +25,12 @@ Perspektivní projekce kamery je nastavena funkcí gluPerspective.
 Model karty je vytvořen pomocí polygonů a čtyřúhelníků (GL_POLYGON, GL_QUADS).
 Zaoblené rohy jsou vytvořeny výpočtem bodů kruhového oblouku.
 Program obsahuje základní interakci s uživatelem pomocí myši (rotace objektu a zoom kamery).
+Nově byla přidána metoda set_card_type(), která umožňuje dynamickou změnu rozměrů karty.
+Sidebar obsahuje QComboBox pro výběr typu karty a je stylován pomocí CSS (setStyleSheet). Změna hodnoty v comboboxu je napojena na funkci on_card_type_changed(), která aktualizuje OpenGL scénu. Přidána obsluha klávesnice (keyPressEvent) pro zavření aplikace klávesou ESC.
+
 Struktura programu
 StartMenuDialog – dialogové okno pro výběr režimu okna a typu karty.
 GLWidget – OpenGL widget zodpovědný za vykreslování 3D modelu karty.
 MainWindow – hlavní okno aplikace obsahující OpenGL widget.
 Hlavní část programu inicializuje aplikaci, zobrazí dialog a po potvrzení otevře hlavní okno.
+Sidebar – nová komponenta umožňující změnu typu karty během běhu programu.

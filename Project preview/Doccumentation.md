@@ -34,3 +34,37 @@ GLWidget – OpenGL widget zodpovědný za vykreslování 3D modelu karty.
 MainWindow – hlavní okno aplikace obsahující OpenGL widget.
 Hlavní část programu inicializuje aplikaci, zobrazí dialog a po potvrzení otevře hlavní okno.
 Sidebar – nová komponenta umožňující změnu typu karty během běhu programu.
+18.03.2026
+Nové a změněné funkce
+Přidána podpora více textových objektů (text layers) na kartě.
+Vytvořena třída TextObject pro ukládání textu, pozice, barvy a strany (front/back).
+Možnost přidávat nové texty během běhu aplikace.
+Texty lze přesouvat myší přímo na kartě (drag & drop).
+Přidána detekce kliknutí na text (screen_rect pro interakci).
+Text lze zobrazit na přední i zadní straně karty.
+Automatická viditelnost textu podle natočení karty.
+Přidána možnost změny barvy textu pomocí QColorDialog.
+Přidána možnost mazání jednotlivých textových vrstev.
+
+Přidán sidebar s pokročilým UI pro správu textů.
+Vytvořena komponenta TextObjectWidget pro editaci textu (obsah, strana, barva, smazání).
+Přidán scrollovací seznam textových vrstev (QScrollArea).
+
+Přidána změna barvy karty (barevná paleta + vlastní výběr).
+Vytvořena komponenta ColorSwatch pro výběr barvy.
+Přidána podpora vlastního výběru barvy přes dialog.
+
+Vylepšené vykreslování:
+- přidáno OpenGL osvětlení (GL_LIGHTING)
+- přidány normály pro správné stínování
+- hladké stínování (GL_SMOOTH)
+- multisampling a anti-aliasing
+
+Přidán override paintEvent pro kombinaci OpenGL + QPainter (vykreslení textu nad 3D scénou).
+
+Zvýšen počet kroků pro zaoblení rohů (hladší křivky).
+Změněn výchozí úhel kamery pro lepší vizuální prezentaci.
+Upravena citlivost zoomu a pohybu.
+
+Přidán tmavý vzhled aplikace (dark theme pomocí stylesheetu).
+Upraven sidebar pro lepší UX a přehlednost.

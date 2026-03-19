@@ -3,6 +3,7 @@ from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from OpenGL.GL import *
 from OpenGL.GLU import *
+from Ppcolorpallete import ColorSwatch, create_color_palette
 
 
 class StartMenuDialog(QtWidgets.QDialog):
@@ -336,16 +337,6 @@ class GLWidget(QOpenGLWidget):
         self.camera_dist = max(20.0, min(500.0, self.camera_dist))
         self.update()
 
-class ColorSwatch(QtWidgets.QPushButton):
-    colorSelected = QtCore.Signal(str)
-    def __init__(self, color_hex, parent=None):
-        super().__init__(parent)
-        self.color_hex = color_hex
-        self.setFixedSize(24, 24)
-        self.setCursor(QtCore.Qt.PointingHandCursor)
-        self.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #ddd; border-radius: 12px;")
-        self.clicked.connect(lambda: self.colorSelected.emit(self.color_hex))
-
 class TextObjectWidget(QtWidgets.QWidget):
     def __init__(self, text_obj, gl_widget, parent=None):
         super().__init__(parent)
@@ -466,21 +457,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Card Color Palette
         sidebar_layout.addWidget(QtWidgets.QLabel("Card Surface Color"))
-        card_colors_layout = QtWidgets.QHBoxLayout()
-        card_colors_layout.setSpacing(5)
+        
+        # 7 Basic colors for card surface
         card_colors = ["#ffffff", "#2c3e50", "#d4af37", "#2980b9", "#c0392b", "#27ae60", "#8e44ad"]
-        for color in card_colors:
-            swatch = ColorSwatch(color)
-            swatch.colorSelected.connect(self.on_card_color_changed)
-            card_colors_layout.addWidget(swatch)
-            
-        self.custom_color_btn = QtWidgets.QPushButton("+")
-        self.custom_color_btn.setFixedSize(24, 24)
-        self.custom_color_btn.setCursor(QtCore.Qt.PointingHandCursor)
-        self.custom_color_btn.setStyleSheet("background: qlineargradient(stop:0 red, stop:1 blue); color: white; border-radius: 12px;")
-        self.custom_color_btn.clicked.connect(self.on_custom_card_color_requested)
-        card_colors_layout.addWidget(self.custom_color_btn)
-        sidebar_layout.addLayout(card_colors_layout)
+        
+        # Build palette using helper from ColorPalette.py
+        card_palette_layout = create_color_palette(
+            colors=card_colors, 
+            callback=self.on_card_color_changed, 
+            custom_callback=self.on_custom_card_color_requested,
+            gradient_style="qlineargradient(stop:0 red, stop:1 blue)"
+        )
+        sidebar_layout.addLayout(card_palette_layout)
 
         # Multiple Text Objects Section
         sidebar_layout.addWidget(QtWidgets.QLabel("Custom Text Layers"))

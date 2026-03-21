@@ -66,6 +66,7 @@ class TextObject:
         self.side = side # "front" or "back"
         self.pos = [0.0, 0.0]
         self.color = QtGui.QColor(color)
+        self.font = QtGui.QFont("Segoe UI", 12, QtGui.QFont.Bold)
         self.screen_rect = QtCore.QRect()
 
 class GLWidget(QOpenGLWidget):
@@ -180,8 +181,11 @@ class GLWidget(QOpenGLWidget):
                 try:
                     # Project 3 local points for transform basis
                     s0 = gluProject(lx, ly, lz, modelview, projection, viewport)
-                    sx = gluProject(lx + 1.0, ly, lz, modelview, projection, viewport)
-                    sy = gluProject(lx, ly + 1.0, lz, modelview, projection, viewport)
+                    # For front, +X is viewer-right. For back, -X is viewer-right.
+                    lx_step = 1.0 if obj.side == "front" else -1.0
+                    sx = gluProject(lx + lx_step, ly, lz, modelview, projection, viewport)
+                    # We project towards ly - 1 to make the painter Y axis point "down" the card surface
+                    sy = gluProject(lx, ly - 1.0, lz, modelview, projection, viewport)
                     
                     s0y = viewport[3] - s0[1]
                     sxy = viewport[3] - sx[1]
@@ -195,16 +199,11 @@ class GLWidget(QOpenGLWidget):
                         transform = QtGui.QTransform(vx[0], vx[1], vy[0], vy[1], s0[0], s0y)
                         painter.setTransform(transform)
                         
-                        font = QtGui.QFont("Segoe UI", 12, QtGui.QFont.Bold)
-                        painter.setFont(font)
+                        painter.setFont(obj.font)
                         painter.setPen(obj.color)
                         
                         metrics = painter.fontMetrics()
                         rect = metrics.boundingRect(obj.text)
-                        
-                        # Apply local flip if on back side to make text readable
-                        if obj.side == "back":
-                            painter.scale(-1, 1)
                         
                         painter.drawText(-rect.width() / 2, rect.height() / 4, obj.text)
                         
@@ -316,7 +315,9 @@ class GLWidget(QOpenGLWidget):
 
         if self.dragging_obj:
             scale = self.camera_dist / 500.0
-            self.dragging_obj.pos[0] += dx * scale
+            # On back face, X is reversed viewer-wise
+            side_scale = 1.0 if self.dragging_obj.side == "front" else -1.0
+            self.dragging_obj.pos[0] += dx * scale * side_scale
             self.dragging_obj.pos[1] -= dy * scale
             
             # Constraints
@@ -373,6 +374,10 @@ class TextObjectWidget(QtWidgets.QWidget):
         self.color_btn.clicked.connect(self.on_color_requested)
         ctrl_layout.addWidget(self.color_btn)
         
+        self.font_btn = QtWidgets.QPushButton("Font")
+        self.font_btn.clicked.connect(self.on_font_requested)
+        ctrl_layout.addWidget(self.font_btn)
+        
         self.del_btn = QtWidgets.QPushButton("X")
         self.del_btn.setFixedWidth(20)
         self.del_btn.setStyleSheet("background-color: #7f1d1d;")
@@ -393,6 +398,12 @@ class TextObjectWidget(QtWidgets.QWidget):
         color = QtWidgets.QColorDialog.getColor(initial=self.text_obj.color, parent=self)
         if color.isValid():
             self.text_obj.color = color
+            self.gl_widget.update()
+
+    def on_font_requested(self):
+        font, ok = QtWidgets.QFontDialog.getFont(self.text_obj.font, self)
+        if ok:
+            self.text_obj.font = font
             self.gl_widget.update()
 
     def on_delete(self):

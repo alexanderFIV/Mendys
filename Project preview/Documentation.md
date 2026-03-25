@@ -1,4 +1,5 @@
-**This was written by AI I only fix the thiings I do not like personally tho I am not sure If this dommuntetion is supposed to be uniformed or if  a more of a datum based input is preffered/wanted. For the time being I am will use the latter.
+**This was written by AI I only fix the thiings I do not like personally tho I am not sure If this documentation is supposed to be uniformed or if  a more of a datum based input is preffered/wanted. For the time being I am will use the latter.
+**I am not sure if shanooniganing is a word but I like it. - hence I want it here and in my project please do not critize me for that :D
 16.03.2026 
 3D Card Preview
 Popis a cíl projektu

@@ -69,3 +69,14 @@ Upravena citlivost zoomu a pohybu.
 
 Přidán tmavý vzhled aplikace (dark theme pomocí stylesheetu).
 Upraven sidebar pro lepší UX a přehlednost.
+26.03.2026
+Nové a změněné funkce
+Přidána podpora importu vlastních textur (obrázků) pro přední i zadní stranu karty.
+Uživatel může importovat obrázek z disku a aplikovat jej na kartu.
+Po importu obrázku se automaticky nastaví odpovídající textury pro vykreslování.
+Přidána podpora pro různé materiálové efekty (Matte, Glossy, Metallic, Scratched, Grainy, Frosted).
+Uživatel může přepínat materiály v menu.
+Každý materiál má vlastní texturu a parametry pro vykreslování.
+Zlepšena stabilita a kompatibilita s různými verzemi OpenGL a ovladačů.
+Opraveny chyby související s texturami a vykreslováním.
+Zlepšena správa OpenGL kontextu a textur.

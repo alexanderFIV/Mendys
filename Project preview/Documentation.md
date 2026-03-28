@@ -80,3 +80,13 @@ Každý materiál má vlastní texturu a parametry pro vykreslování.
 Zlepšena stabilita a kompatibilita s různými verzemi OpenGL a ovladačů.
 Opraveny chyby související s texturami a vykreslováním.
 Zlepšena správa OpenGL kontextu a textur.
+29.03.2026
+Nové a změněné funkce
+Přidána vizuální podpora pro 3D Embossing (plastické písmo) a textové ohraničení (Borders).
+Embossing simuluje vyvýšený povrch pomocí stínování a odlesků.
+Borders přidávají kontrastní obrys kolem textu pro lepší čitelnost.
+Implementovány přísné fyzické hranice pro textové vrstvy.
+Text již nelze přesunout mimo plochu karty – program automaticky hlídá okraje podle rozměru textu.
+Výrazně kompaktnější a přehlednější sidebar pro správu vrstev.
+Sloučení ovládacích prvků do menšího počtu řádků pro lepší přehlednost bez nutnosti scrollování.
+Odstraněny nepotřebné posuvníky a prvky pro čistší vzhled aplikace.

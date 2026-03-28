@@ -90,3 +90,10 @@ Text již nelze přesunout mimo plochu karty – program automaticky hlídá okr
 Výrazně kompaktnější a přehlednější sidebar pro správu vrstev.
 Sloučení ovládacích prvků do menšího počtu řádků pro lepší přehlednost bez nutnosti scrollování.
 Odstraněny nepotřebné posuvníky a prvky pro čistší vzhled aplikace.
+28.03.2026
+Nové a změněné funkce
+Opraven problém s textovými vrstvami, které se nezobrazovaly na zadní straně karty.
+Opraven problém s textovými vrstvami, které se nezobrazovaly na přední straně karty.
+Opraven problém s textovými vrstvami, které se nezobrazovaly na přední ani zadní straně karty.
+Opraven problém s textovými vrstvami, které se nezobrazovaly na přední ani zadní straně karty.
+**Hurá tohle byla moje osina v zadku už skoro týden ted na něco zábavnějšího :D

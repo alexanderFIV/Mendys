@@ -11,7 +11,16 @@ class StartMenuDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setWindowTitle("3D Preview - Start Menu")
         self.setModal(True)
-        self.resize(300, 250)
+        self.setModal(True)
+        self.resize(300, 320)
+        self.setStyleSheet("""
+            QDialog { background-color: #09090b; color: #f4f4f5; }
+            QLabel { color: #f4f4f5; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-top: 10px; }
+            QRadioButton { color: #fafafa; font-size: 12px; padding: 5px; }
+            QComboBox { background-color: #18181b; color: #fafafa; border: 1px solid #27272a; padding: 6px; border-radius: 4px; }
+            QPushButton { background-color: #27272a; color: white; border: 1px solid #3f3f46; padding: 10px; border-radius: 6px; font-weight: 600; }
+            QPushButton:hover { background-color: #3f3f46; }
+        """)
 
         layout = QtWidgets.QVBoxLayout()
 
@@ -36,6 +45,14 @@ class StartMenuDialog(QtWidgets.QDialog):
         self.card_combo.setCurrentText("CR80")
         layout.addWidget(self.card_combo)
 
+        self.emboss_label = QtWidgets.QLabel("Embossing Quality:")
+        layout.addWidget(self.emboss_label)
+
+        self.emboss_combo = QtWidgets.QComboBox()
+        self.emboss_combo.addItems(["Normal", "Realistic", "Super Realistic"])
+        self.emboss_combo.setCurrentText("Realistic")
+        layout.addWidget(self.emboss_combo)
+
         button_layout = QtWidgets.QHBoxLayout()
         self.start_button = QtWidgets.QPushButton("Start")
         self.start_button.clicked.connect(self.accept)
@@ -59,10 +76,13 @@ class StartMenuDialog(QtWidgets.QDialog):
     def get_selected_card_type(self):
         return self.card_combo.currentText()
 
+    def get_selected_emboss_quality(self):
+        return self.emboss_combo.currentText()
+
 
 class TextObject:
     def __init__(self, text="NEW TEXT", side="front", color="#000000"):
-        self.text = text
+        self.text = self.validate_text(text)
         self.side = side # "front" or "back"
         self.pos = [0.0, 0.0]
         self.color = QtGui.QColor(color)
@@ -74,17 +94,23 @@ class TextObject:
         self.border_enabled = False
         self.width_3d = 10.0 # Approximate width in local units
         self.height_3d = 5.0 # Approximate height in local units
+        self.tex_3d = None # For Super Realistic 3D extrusion
+
+    def validate_text(self, text):
+        # Only allow Latin text and common punctuation
+        return "".join([c for c in text if c.isascii()])
 
     def show_emboss_effect(self):
         return self.is_physical or self.style == "Embossed"
 
 class GLWidget(QOpenGLWidget):
-    def __init__(self, card_type="CR80", parent=None):
+    def __init__(self, card_type="CR80", emboss_quality="Realistic", parent=None):
         # Initialize the OpenGL widget and default rotation angles
         super().__init__(parent)
         self.rotation = [20, -30, 0] # Initial attractive angle
         self.camera_dist = 140.0 
         self.set_card_dimensions(card_type)
+        self.emboss_quality = emboss_quality
         self.quadric = None
         
         # Default card color
@@ -92,13 +118,14 @@ class GLWidget(QOpenGLWidget):
         
         # Multi-text support
         self.text_objects = [TextObject("MENDY'S PREMIUM", "front", "#2c3e50")]
-        self.dragging_obj = None
+        self.selected_obj = None
+        self.is_dragging = False
 
         # Surface/Material system
         self.card_material = "Matte" # Matte, Glossy, Metallic, Scratched, Grainy, Frosted
         self.textures = {} 
-        self.custom_front_tex = None
-        self.custom_back_tex = None
+        self.custom_front_img = None
+        self.custom_back_img = None
 
     def set_card_dimensions(self, card_type):
         dimensions = {
@@ -126,10 +153,13 @@ class GLWidget(QOpenGLWidget):
             p = QtGui.QPainter(img)
             p.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
             
-            # 1. Base Image (if any)
-            target_tex = self.custom_front_tex if side == "front" else self.custom_back_tex
-            # Since custom textures are already OGL IDs, we need original QImages or re-download. 
-            # For simplicity, we assume custom images are only for background and text is on top.
+            # 1. Background Image (Custom Import)
+            bg_img = self.custom_front_img if side == "front" else self.custom_back_img
+            if bg_img:
+                # Scale background image to fit the 1024x640 texture
+                scaled_bg = bg_img.scaled(TW, TH, QtCore.Qt.KeepAspectRatioByExpanding, QtCore.Qt.SmoothTransformation)
+                # Center-crop or just draw it
+                p.drawImage(0, 0, scaled_bg)
             
             # 2. Render Text into texture
             # Map local mm coord [-hw, hw] to texture pixel [0, TW]
@@ -159,16 +189,25 @@ class GLWidget(QOpenGLWidget):
 
                 # Realistic Effects (Shading/Highlights baked into texture)
                 if obj.show_emboss_effect():
-                    if side == "front":
-                        p.setPen(QtGui.QColor(255, 255, 255, 180))
-                        p.drawText(tx - 2, ty - 2, obj.text)
-                        p.setPen(QtGui.QColor(0, 0, 0, 160))
-                        p.drawText(tx + 2, ty + 2, obj.text)
-                    else: # Indented for physical back
-                        p.setPen(QtGui.QColor(0, 0, 0, 140))
-                        p.drawText(tx - 1.5, ty - 1.5, obj.text)
-                        p.setPen(QtGui.QColor(255, 255, 255, 110))
-                        p.drawText(tx + 1.5, ty + 1.5, obj.text)
+                    # Check quality levels
+                    if self.emboss_quality == "Normal":
+                        p.setPen(QtGui.QColor(0, 0, 0, 100))
+                        p.drawText(tx + 1, ty + 1, obj.text)
+                    elif self.emboss_quality == "Realistic":
+                        if side == "front":
+                            p.setPen(QtGui.QColor(255, 255, 255, 180))
+                            p.drawText(tx - 1.5, ty - 1.5, obj.text)
+                            p.setPen(QtGui.QColor(0, 0, 0, 160))
+                            p.drawText(tx + 1.5, ty + 1.5, obj.text)
+                        else: # Indented for physical back
+                            p.setPen(QtGui.QColor(0, 0, 0, 140))
+                            p.drawText(tx - 1, ty - 1, obj.text)
+                            p.setPen(QtGui.QColor(255, 255, 255, 110))
+                            p.drawText(tx + 1, ty + 1, obj.text)
+                    elif self.emboss_quality == "Super Realistic":
+                        # For super realistic, we add a subtle glow/shadow even on the face
+                        # BUT the main effect is 3D geometry in draw_card
+                        pass
                 
                 if obj.border_enabled:
                     path = QtGui.QPainterPath()
@@ -180,11 +219,37 @@ class GLWidget(QOpenGLWidget):
                     final_color = final_color.darker(130)
                 
                 p.setPen(final_color)
+                # For Super Realistic 3D, we also generate a dedicated texture of JUST the text
+                if self.emboss_quality == "Super Realistic" and obj.show_emboss_effect() and side == "front":
+                    t_img = QtGui.QImage(512, 128, QtGui.QImage.Format_ARGB32)
+                    t_img.fill(QtCore.Qt.transparent)
+                    tp = QtGui.QPainter(t_img)
+                    tp.setRenderHints(QtGui.QPainter.Antialiasing | QtGui.QPainter.TextAntialiasing)
+                    t_font = QtGui.QFont(font)
+                    t_font.setPointSizeF(obj.font.pointSizeF() * (512 / self.card_w) * 0.35)
+                    tp.setFont(t_font)
+                    tm = tp.fontMetrics()
+                    tr = tm.boundingRect(obj.text)
+                    # For Super Realistic extrusion, we use a WHITE mask texture
+                    # We will apply the color logic in paintGL
+                    tp.setPen(QtCore.Qt.white)
+                    tp.drawText(256 - tr.width()/2, 64 + tr.height()/4, obj.text)
+                    tp.end()
+                    if obj.tex_3d: glDeleteTextures(1, [int(obj.tex_3d)])
+                    obj.tex_3d = self._load_qimage_as_texture(t_img)
+                    obj.tex_w_ratio = tr.width() / 512
+                    obj.tex_h_ratio = tr.height() / 128
+
                 p.drawText(tx, ty, obj.text)
                 
                 # Store hit box for selection
                 obj.width_3d = rect.width() / scale_f
                 obj.height_3d = rect.height() / scale_f
+
+                # Selection Highlight (only on active editing side)
+                if obj == self.selected_obj and self.emboss_quality != "Super Realistic":
+                    p.setPen(QtGui.QPen(QtGui.QColor(0, 122, 255), 2, QtCore.Qt.DashLine))
+                    p.drawRect(tx - 5, ty - rect.height() + 5, rect.width() + 10, rect.height() + 5)
 
             p.end()
             
@@ -215,8 +280,20 @@ class GLWidget(QOpenGLWidget):
         self.update()
 
     def set_custom_texture(self, image_path, side):
-        # For now, custom images are just placeholders for the fusion background.
-        pass
+        img = QtGui.QImage(image_path)
+        if img.isNull():
+            return False
+        
+        if side == "front":
+            self.custom_front_img = img
+        elif side == "back":
+            self.custom_back_img = img
+        elif side == "both":
+            self.custom_front_img = img
+            self.custom_back_img = img
+            
+        self._refresh_textures = True
+        self.update()
         return True
 
     def initializeGL(self):
@@ -406,39 +483,116 @@ class GLWidget(QOpenGLWidget):
             glVertex3f(*p_bot)
         glEnd()
 
+        # Super Realistic 3D Extrusion/Indentation Pass
+        if self.emboss_quality == "Super Realistic":
+            for obj in self.text_objects:
+                if not obj.show_emboss_effect() or not obj.tex_3d:
+                    continue
+                
+                glEnable(GL_TEXTURE_2D)
+                glBindTexture(GL_TEXTURE_2D, obj.tex_3d)
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                
+                tw = 51.2 * obj.tex_w_ratio
+                th = 12.8 * obj.tex_h_ratio
+                lx, ly = obj.pos
+                
+                # FRONT: Raised (Extrusion)
+                if obj.side == "front" or obj.is_physical:
+                    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [1.0, 1.0, 1.0, 1.0])
+                    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
+                    layers = 20
+                    thickness = 1.0 
+                    for i in range(layers):
+                        z_off = hz + 0.05 + (i / layers) * thickness
+                        
+                        if i == layers - 1:
+                            # TOP FACE: Use the object's actual color
+                            c = obj.color
+                            glColor4f(c.redF(), c.greenF(), c.blueF(), 1.0)
+                        else:
+                            # SIDES: Use White/Gray for the material side look
+                            brightness = 0.95 + (i / layers) * 0.05
+                            glColor4f(brightness, brightness, brightness, 1.0)
+                        
+                        glBegin(GL_QUADS)
+                        glNormal3f(0, 0, 1)
+                        glTexCoord2f(0.5 - obj.tex_w_ratio/2, 0.5 - obj.tex_h_ratio/2); glVertex3f(lx - tw/2, ly - th/2, z_off)
+                        glTexCoord2f(0.5 + obj.tex_w_ratio/2, 0.5 - obj.tex_h_ratio/2); glVertex3f(lx + tw/2, ly - th/2, z_off)
+                        glTexCoord2f(0.5 + obj.tex_w_ratio/2, 0.5 + obj.tex_h_ratio/2); glVertex3f(lx + tw/2, ly + th/2, z_off)
+                        glTexCoord2f(0.5 - obj.tex_w_ratio/2, 0.5 + obj.tex_h_ratio/2); glVertex3f(lx - tw/2, ly + th/2, z_off)
+                        glEnd()
+
+                # BACK: Indented (Recessed) - the physical 'sink in' on the other side
+                if (obj.side == "front" and obj.is_physical) or (obj.side == "back"):
+                    # On the back, it goes INTO the card
+                    layers = 12
+                    thickness = -0.5 # Goes inward from back surface
+                    card_c = self.card_color
+                    for i in range(layers):
+                        z_off = -hz - 0.01 + (i / layers) * thickness
+                        # Slightly darken the card color to simulate the shadow inside the indentation
+                        darkness = 0.5 + (i / layers) * 0.3
+                        glColor4f(card_c.redF() * darkness, card_c.greenF() * darkness, card_c.blueF() * darkness, 1.0)
+                        
+                        glBegin(GL_QUADS)
+                        glNormal3f(0, 0, -1)
+                        # MIRRORED Texture coordinates for the back side
+                        # Swap Left and Right to show the back of the punched letters correctly
+                        glTexCoord2f(0.5 + obj.tex_w_ratio/2, 0.5 - obj.tex_h_ratio/2); glVertex3f(lx - tw/2, ly - th/2, z_off)
+                        glTexCoord2f(0.5 - obj.tex_w_ratio/2, 0.5 - obj.tex_h_ratio/2); glVertex3f(lx + tw/2, ly - th/2, z_off)
+                        glTexCoord2f(0.5 - obj.tex_w_ratio/2, 0.5 + obj.tex_h_ratio/2); glVertex3f(lx + tw/2, ly + th/2, z_off)
+                        glTexCoord2f(0.5 + obj.tex_w_ratio/2, 0.5 + obj.tex_h_ratio/2); glVertex3f(lx - tw/2, ly + th/2, z_off)
+                        glEnd()
+                
+                glDisable(GL_BLEND)
+
     def update(self):
         self._refresh_textures = True
         super().update()
 
     def mousePressEvent(self, event):
-        self.dragging_obj = None
         self.last_pos = event.pos()
-        if self.text_objects:
-            self.dragging_obj = self.text_objects[-1]
+        
+        # Dragging is only for Left Button
+        if event.button() == QtCore.Qt.LeftButton:
+            self.selected_obj = None
+            self.is_dragging = False
+            if self.text_objects:
+                # Basic picking: for now we just pick the top-most one (last in list)
+                self.selected_obj = self.text_objects[-1]
+                self.is_dragging = True
+                self.update()
+        elif event.button() == QtCore.Qt.RightButton:
+            # Just track positions for rotation (handled in MoveEvent)
+            pass
 
     def mouseReleaseEvent(self, event):
-        self.dragging_obj = None
+        self.is_dragging = False
 
     def mouseMoveEvent(self, event):
         pos = event.pos()
         dx = pos.x() - self.last_pos.x()
         dy = pos.y() - self.last_pos.y()
         
-        if self.dragging_obj:
-            scale = self.camera_dist / 500.0
-            ss = 1.0 if self.dragging_obj.side == "front" else -1.0
-            self.dragging_obj.pos[0] += dx * scale * ss
-            self.dragging_obj.pos[1] -= dy * scale
-            hw, hh = self.card_w/2.0, self.card_h/2.0
-            self.dragging_obj.pos[0] = max(-hw+5, min(hw-5, self.dragging_obj.pos[0]))
-            self.dragging_obj.pos[1] = max(-hh+5, min(hh-5, self.dragging_obj.pos[1]))
-            self.update() 
-        else:
+        # Rotation (Right Mouse or no dragging)
+        if event.buttons() & QtCore.Qt.RightButton or (not self.is_dragging):
             self.rotation[1] += dx * 0.5
             self.rotation[0] += dy * 0.5
+
+        # Dragging (Left Mouse on selected object)
+        if (event.buttons() & QtCore.Qt.LeftButton) and self.selected_obj and self.is_dragging:
+            scale = self.camera_dist / 500.0
+            ss = 1.0 if self.selected_obj.side == "front" else -1.0
+            self.selected_obj.pos[0] += dx * scale * ss
+            self.selected_obj.pos[1] -= dy * scale
+            hw, hh = self.card_w/2.0, self.card_h/2.0
+            self.selected_obj.pos[0] = max(-hw+5, min(hw-5, self.selected_obj.pos[0]))
+            self.selected_obj.pos[1] = max(-hh+5, min(hh-5, self.selected_obj.pos[1]))
             
         self.last_pos = pos
-        super().update()
+        self.update()
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y() / 8.0
@@ -454,11 +608,13 @@ class TextObjectWidget(QtWidgets.QWidget):
         self.gl_widget = gl_widget
         
         self.setStyleSheet("""
-            QWidget { background-color: #27272a; border-radius: 6px; padding: 5px; }
-            QLineEdit { background-color: #18181b; border: 1px solid #3f3f46; color: #e0e0e0; font-size: 11px; }
-            QPushButton { background-color: #3f3f46; border: none; color: white; padding: 3px; border-radius: 3px; font-size: 10px; font-weight: bold; }
-            QPushButton:hover { background-color: #52525b; }
-            QComboBox { background-color: #18181b; border: 1px solid #3f3f46; color: #e0e0e0; font-size: 10px; }
+            QWidget { background-color: #09090b; border: 1px solid #27272a; border-radius: 8px; }
+            QLineEdit { background-color: #18181b; border: 1px solid #27272a; color: #fafafa; font-size: 11px; padding: 4px; }
+            QLineEdit:focus { border: 1px solid #3b82f6; }
+            QPushButton { background-color: #27272a; border: 1px solid #27272a; color: white; padding: 5px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+            QPushButton:hover { background-color: #3f3f46; border-color: #52525b; }
+            QComboBox { background-color: #18181b; border: 1px solid #27272a; color: #fafafa; font-size: 10px; padding: 3px; }
+            QComboBox:hover { background-color: #27272a; }
         """)
         
         layout = QtWidgets.QVBoxLayout(self)
@@ -519,7 +675,10 @@ class TextObjectWidget(QtWidgets.QWidget):
         layout.addLayout(ctrl_layout)
 
     def on_text_changed(self, text):
-        self.text_obj.text = text
+        clean_text = self.text_obj.validate_text(text)
+        if clean_text != text:
+            self.edit.setText(clean_text)
+        self.text_obj.text = clean_text
         self.gl_widget.update()
 
     def on_side_changed(self, side_text):
@@ -553,28 +712,78 @@ class TextObjectWidget(QtWidgets.QWidget):
         self.deleteLater()
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, mode="windowed", card_type="CR80"):
+    def __init__(self, mode="windowed", card_type="CR80", emboss_quality="Realistic"):
         super().__init__()
         self.setWindowTitle("Mendy's 3D Card Preview")
         self.setGeometry(100, 100, 1100, 700)
 
-        # Apply dark theme stylesheet to the whole window
+        # Apply premium dark theme stylesheet to the whole window
         self.setStyleSheet("""
-            QMainWindow { background-color: #1e1e21; }
-            QLabel { color: #e0e0e0; font-size: 13px; font-weight: bold; margin-top: 10px; }
+            QMainWindow { background-color: #09090b; }
+            QLabel { 
+                color: #f4f4f5; 
+                font-size: 11px; 
+                text-transform: uppercase; 
+                letter-spacing: 0.5px; 
+                font-weight: 800; 
+                margin-top: 15px; 
+                margin-bottom: 2px;
+            }
             QComboBox { 
-                background-color: #2d2d30; color: #e0e0e0; border: 1px solid #3f3f46; 
-                padding: 5px; border-radius: 4px; 
+                background-color: #18181b; color: #fafafa; border: 1px solid #27272a; 
+                padding: 8px; border-radius: 6px; font-size: 12px;
             }
+            QComboBox QAbstractItemView {
+                background-color: #18181b;
+                color: #fafafa;
+                selection-background-color: #3b82f6;
+                selection-color: white;
+                border: 1px solid #3f3f46;
+                outline: 0px;
+                padding: 4px;
+            }
+            QComboBox:hover { border: 1px solid #3f3f46; background-color: #27272a; }
+            QComboBox::drop-down { border: none; }
+            
             QLineEdit { 
-                background-color: #2d2d30; color: #e0e0e0; border: 1px solid #3f3f46; 
-                padding: 5px; border-radius: 4px; 
+                background-color: #18181b; color: #fafafa; border: 1px solid #27272a; 
+                padding: 8px; border-radius: 6px; 
             }
+            QLineEdit:focus { border: 1px solid #3b82f6; }
+            
             QPushButton#ActionBtn {
-                background-color: #3f3f46; color: white; border: none; padding: 8px; 
-                border-radius: 4px; font-weight: bold;
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3f3f46, stop:1 #27272a); 
+                color: #ffffff; border: 1px solid #52525b; 
+                padding: 10px; border-radius: 6px; font-weight: 700; font-size: 11px;
+                text-transform: uppercase;
             }
-            QPushButton#ActionBtn:hover { background-color: #52525b; }
+            QPushButton#ActionBtn:hover { 
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #52525b, stop:1 #3f3f46); 
+                border-color: #3b82f6; 
+            }
+            QPushButton#ActionBtn:pressed { background-color: #18181b; }
+            
+            QPushButton#EmbossBtn {
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ca8a04, stop:1 #854d0e); 
+                color: #ffffff; border: 1px solid #eab308; 
+                padding: 10px; border-radius: 6px; font-weight: 800; font-size: 11px;
+                text-transform: uppercase;
+            }
+            QPushButton#EmbossBtn:hover { 
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #eab308, stop:1 #ca8a04); 
+                border-color: #fef08a; 
+            }
+            
+            QPushButton#ImportBtn {
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #059669, stop:1 #065f46); 
+                color: #ffffff; border: 1px solid #10b981; 
+                padding: 10px; border-radius: 6px; font-weight: 800; font-size: 11px;
+                text-transform: uppercase;
+            }
+            QPushButton#ImportBtn:hover { 
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10b981, stop:1 #059669); 
+                border-color: #6ee7b7; 
+            }
         """)
 
         central_widget = QtWidgets.QWidget()
@@ -584,7 +793,7 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.setSpacing(0)
 
         # GL Widget - Init early so we can reference it
-        self.gl_widget = GLWidget(card_type)
+        self.gl_widget = GLWidget(card_type, emboss_quality)
 
         # Sidebar
         self.sidebar = QtWidgets.QWidget()
@@ -631,7 +840,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Custom Image Section
         sidebar_layout.addWidget(QtWidgets.QLabel("Surface Image (Custom)"))
         self.import_btn = QtWidgets.QPushButton("Import Image...")
-        self.import_btn.setObjectName("ActionBtn")
+        self.import_btn.setObjectName("ImportBtn")
         self.import_btn.clicked.connect(self.on_import_image_clicked)
         sidebar_layout.addWidget(self.import_btn)
 
@@ -644,9 +853,7 @@ class MainWindow(QtWidgets.QMainWindow):
         sidebar_layout.addWidget(self.add_text_btn)
 
         self.add_emboss_btn = QtWidgets.QPushButton("+ Add Embossed Layer")
-        self.add_emboss_btn.setObjectName("ActionBtn")
-        # Gold/Silver theme for embossed button
-        self.add_emboss_btn.setStyleSheet("background-color: #926d15;") 
+        self.add_emboss_btn.setObjectName("EmbossBtn")
         self.add_emboss_btn.clicked.connect(self.on_add_emboss_clicked)
         sidebar_layout.addWidget(self.add_emboss_btn)
 
@@ -755,6 +962,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Escape:
             self.close()
+        elif event.key() in [QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter]:
+            # Exit movement and editation
+            self.gl_widget.selected_obj = None
+            self.gl_widget.is_dragging = False
+            # De-focus any sidebar widgets
+            self.setFocus() 
+            self.gl_widget.update()
         else:
             super().keyPressEvent(event)
 
@@ -765,7 +979,8 @@ if __name__ == "__main__":
     if dialog.exec() == QtWidgets.QDialog.Accepted:
         mode = dialog.get_selected_mode()
         card_type = dialog.get_selected_card_type()
-        window = MainWindow(mode, card_type)
+        emboss_quality = dialog.get_selected_emboss_quality()
+        window = MainWindow(mode, card_type, emboss_quality)
         app.exec()
     else:
         app.quit()

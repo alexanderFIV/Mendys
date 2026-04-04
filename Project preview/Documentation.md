@@ -121,3 +121,5 @@ Rozšířen sidebar o kategorizovaný výběr čipů pro lepší přehlednost.
 Vylepšené vykreslování kontaktních plošek pro čipy SLE4442 a Atmel/FM4442.
 Stříbrné a zlaté varianty pro standardní ISO kontaktní čipy.
 ** New AI used for toadays doccumentation I hope it doesn't suck :D
+5.04.2026
+**added chip card selection + chip visualization + chip types not much today unfortunately 

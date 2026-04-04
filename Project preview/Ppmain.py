@@ -138,8 +138,10 @@ class GLWidget(QOpenGLWidget):
         self.card_w, self.card_h, self.card_t = dimensions.get(card_type, (85.6, 53.98, 0.76))
         # Chip support
         self.chip_type = "None" # "None", "Gold 6-Pad", "Gold 8-Pad", "Silver 6-Pad", "Silver 8-Pad"
-        # Standard ISO position (Approx 10mm from left, 20mm from top)
-        self.chip_pos = [10.0 + 6.0, 53.98 - 20.0 - 5.0] # Center of 12x10mm chip
+        # ISO 7816-2 Standard Position:
+        # Left edge starts at 10.25mm. Top edge starts at 19.23mm.
+        # Center GL coords for 13x12mm module:
+        self.chip_pos = [-27.74, 3.10] 
         
         self.corner_radius = 3.18 
         self._refresh_textures = True
@@ -280,38 +282,54 @@ class GLWidget(QOpenGLWidget):
 
         # CONTACT CHIPS (Visible Pad)
         if "(Contact" in self.chip_type:
-            cw_mm, ch_mm = 12.0, 10.0
+            # Common module size (encompassing ISO-7816-2 pads)
+            cw_mm, ch_mm = 13.0, 12.0
             cw, ch = cw_mm * scale_x, ch_mm * scale_y
             lx, ly = self.chip_pos
+            
+            # Map GL center to texture pixels
             px = ((lx - cw_mm/2 + hw) / self.card_w) * TW
             py = (1.0 - (ly + ch_mm/2 + hh) / self.card_h) * TH
             
             is_gold = "Gold" in self.chip_type
-            base_color = QtGui.QColor("#d4af37") if is_gold else QtGui.QColor("#c0c0c0")
-            border_color = base_color.darker(150)
+            base_color = QtGui.QColor("#e2bd4d") if is_gold else QtGui.QColor("#d1d5db")
+            border_color = base_color.darker(140)
             gap_color = base_color.darker(250)
             
+            # 1. Main Metallic Pad
             p.setPen(QtGui.QPen(border_color, 1))
             p.setBrush(base_color)
-            p.drawRoundedRect(px, py, cw, ch, 2, 2)
+            p.drawRoundedRect(px, py, cw, ch, 3, 3)
             
+            # 2. Internal Segments (ISO 7816-2 Pitches: 7.62mm Horiz, 2.54mm Vert)
             p.setBrush(QtCore.Qt.NoBrush)
-            p.setPen(QtGui.QPen(gap_color, 1.5))
+            p.setPen(QtGui.QPen(gap_color, 1.2))
             
-            if "SLE" in self.chip_type: # 6-pad
-                p.drawLine(px + 2, py + ch/2, px + cw - 2, py + ch/2)
-                p.drawLine(px + cw/3, py + 2, px + cw/3, py + ch - 2)
-                p.drawLine(px + 2*cw/3, py + 2, px + 2*cw/3, py + ch - 2)
-            else: # 8-pad ISO / Atmel
-                p.drawLine(px + 2, py + ch/3, px + cw - 2, py + ch/3)
-                p.drawLine(px + 2, py + 2*ch/3, px + cw - 2, py + 2*ch/3)
-                p.drawLine(px + cw/2, py + 2, px + cw/2, py + ch - 2)
-                p.drawRoundedRect(px + cw/4, py + ch/4, cw/2, ch/2, 1, 1)
+            # Vertical split (Between C1-C4 and C5-C8)
+            # Standard center split is 7.62mm wide region
+            vx = px + (7.62/2 / cw_mm) * cw
+            # However, for 13mm module, we just split it roughly center or offset
+            p.drawLine(px + cw*0.5, py + 2, px + cw*0.5, py + ch - 2)
+            
+            # Horizontal splits (Row gaps are 2.54mm)
+            for i in range(1, 4 if "8-Pad" in self.chip_type else 3):
+                # Calculate relative Y based on 2.54mm pitch
+                # ISO pads start ~19.23 and end ~28.55.
+                y_off = (i * 2.54 / ch_mm) * ch
+                p.drawLine(px + 2, py + y_off, px + cw - 2, py + y_off)
 
-            # Subtle metallic gradient
+            # Center "Isolation Area" (Typical for modern microchips)
+            if "8-Pad" in self.chip_type:
+                p.drawRoundedRect(px + cw*0.3, py + ch*0.25, cw*0.4, ch*0.5, 2, 2)
+            else:
+                p.drawRoundedRect(px + cw*0.35, py + ch*0.35, cw*0.3, ch*0.3, 1, 1)
+
+            # 3. Metallic Lustre
             grad = QtGui.QLinearGradient(px, py, px + cw, py + ch)
-            grad.setColorAt(0, QtGui.QColor(255, 255, 255, 80)); grad.setColorAt(1, QtGui.QColor(0, 0, 0, 40))
-            p.setBrush(grad); p.setPen(QtCore.Qt.NoPen); p.drawRoundedRect(px, py, cw, ch, 2, 2)
+            grad.setColorAt(0, QtGui.QColor(255, 255, 255, 120))
+            grad.setColorAt(0.4, QtCore.Qt.transparent)
+            grad.setColorAt(1, QtGui.QColor(0, 0, 0, 60))
+            p.setBrush(grad); p.setPen(QtCore.Qt.NoPen); p.drawRoundedRect(px, py, cw, ch, 3, 3)
         
         # CONTACTLESS CHIPS (Internal Antenna - Subtle X-Ray Look)
         else:
@@ -936,7 +954,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Chip Section
         sidebar_layout.addWidget(QtWidgets.QLabel("Integrated Circuit (Chip)"))
         self.chip_combo = QtWidgets.QComboBox()
-        self.chip_combo.addItems([
+        
+        # Build a robust model for the chips with disabled headers
+        chip_list = [
             "None",
             "-- CONTACT CHIPS --",
             "SLE4442 (Contact Gold)",
@@ -959,11 +979,18 @@ class MainWindow(QtWidgets.QMainWindow):
             "[NFC] NTAG 216",
             "-- UHF 900 MHz --",
             "[UHF] Alien H3"
-        ])
-        # Disable the category separators
-        for i in [1, 7, 10, 16, 20]:
-            self.chip_combo.model().setData(self.chip_combo.model().index(i, 0), 0, QtCore.Qt.UserRole - 1)
+        ]
+        
+        model = QtGui.QStandardItemModel()
+        for text in chip_list:
+            item = QtGui.QStandardItem(text)
+            if text.startswith("--"):
+                item.setSelectable(False)
+                item.setEnabled(False)
+                item.setForeground(QtGui.QColor("#71717a")) # Muted color for headers
+            model.appendRow(item)
             
+        self.chip_combo.setModel(model)
         self.chip_combo.currentTextChanged.connect(self.on_chip_type_changed)
         sidebar_layout.addWidget(self.chip_combo)
 

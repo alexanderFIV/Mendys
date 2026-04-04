@@ -109,4 +109,15 @@ Přidána validace textu (pouze ASCII znaky)
 Výrazně vylepšené vykreslování emboss efektů v závislosti na zvolené kvalitě
 Celkové vylepšení UI/UX sidebaru a dark theme konzistence
 Malé optimalizace a úklid kódu
+
+04.04.2026
+Nové a změněné funkce
+Kompletní katalog čipů podle webu levne-karty.cz (LF, HF, NFC, UHF a kontaktní čipy).
+Přidána vizualizace vnitřní antény (X-ray look) pro bezkontaktní karty:
+- LF (125 kHz): kruhová cívka.
+- HF/NFC (13.56 MHz): obdélníková cívka po obvodu.
+- UHF (900 MHz): dipólová anténa ve středu karty.
+Rozšířen sidebar o kategorizovaný výběr čipů pro lepší přehlednost.
+Vylepšené vykreslování kontaktních plošek pro čipy SLE4442 a Atmel/FM4442.
+Stříbrné a zlaté varianty pro standardní ISO kontaktní čipy.
 ** New AI used for toadays doccumentation I hope it doesn't suck :D

@@ -136,6 +136,11 @@ class GLWidget(QOpenGLWidget):
             "CR50": (43.66, 28.58, 0.76)   # Luggage tag / Key tag size
         }
         self.card_w, self.card_h, self.card_t = dimensions.get(card_type, (85.6, 53.98, 0.76))
+        # Chip support
+        self.chip_type = "None" # "None", "Gold 6-Pad", "Gold 8-Pad", "Silver 6-Pad", "Silver 8-Pad"
+        # Standard ISO position (Approx 10mm from left, 20mm from top)
+        self.chip_pos = [10.0 + 6.0, 53.98 - 20.0 - 5.0] # Center of 12x10mm chip
+        
         self.corner_radius = 3.18 
         self._refresh_textures = True
         self.update()
@@ -161,7 +166,11 @@ class GLWidget(QOpenGLWidget):
                 # Center-crop or just draw it
                 p.drawImage(0, 0, scaled_bg)
             
-            # 2. Render Text into texture
+            # 2. Render Chip (Only on front)
+            if side == "front" and self.chip_type != "None":
+                self._draw_chip(p, TW, TH)
+
+            # 3. Render Text into texture
             # Map local mm coord [-hw, hw] to texture pixel [0, TW]
             hw, hh = self.card_w / 2.0, self.card_h / 2.0
             def mm_to_px(lx, ly):
@@ -262,6 +271,78 @@ class GLWidget(QOpenGLWidget):
                 self.fused_back_tex = tid
         
         self._refresh_textures = False
+
+    def _draw_chip(self, p, TW, TH):
+        # Position mapping
+        hw, hh = self.card_w / 2.0, self.card_h / 2.0
+        scale_x = TW / self.card_w
+        scale_y = TH / self.card_h
+
+        # CONTACT CHIPS (Visible Pad)
+        if "(Contact" in self.chip_type:
+            cw_mm, ch_mm = 12.0, 10.0
+            cw, ch = cw_mm * scale_x, ch_mm * scale_y
+            lx, ly = self.chip_pos
+            px = ((lx - cw_mm/2 + hw) / self.card_w) * TW
+            py = (1.0 - (ly + ch_mm/2 + hh) / self.card_h) * TH
+            
+            is_gold = "Gold" in self.chip_type
+            base_color = QtGui.QColor("#d4af37") if is_gold else QtGui.QColor("#c0c0c0")
+            border_color = base_color.darker(150)
+            gap_color = base_color.darker(250)
+            
+            p.setPen(QtGui.QPen(border_color, 1))
+            p.setBrush(base_color)
+            p.drawRoundedRect(px, py, cw, ch, 2, 2)
+            
+            p.setBrush(QtCore.Qt.NoBrush)
+            p.setPen(QtGui.QPen(gap_color, 1.5))
+            
+            if "SLE" in self.chip_type: # 6-pad
+                p.drawLine(px + 2, py + ch/2, px + cw - 2, py + ch/2)
+                p.drawLine(px + cw/3, py + 2, px + cw/3, py + ch - 2)
+                p.drawLine(px + 2*cw/3, py + 2, px + 2*cw/3, py + ch - 2)
+            else: # 8-pad ISO / Atmel
+                p.drawLine(px + 2, py + ch/3, px + cw - 2, py + ch/3)
+                p.drawLine(px + 2, py + 2*ch/3, px + cw - 2, py + 2*ch/3)
+                p.drawLine(px + cw/2, py + 2, px + cw/2, py + ch - 2)
+                p.drawRoundedRect(px + cw/4, py + ch/4, cw/2, ch/2, 1, 1)
+
+            # Subtle metallic gradient
+            grad = QtGui.QLinearGradient(px, py, px + cw, py + ch)
+            grad.setColorAt(0, QtGui.QColor(255, 255, 255, 80)); grad.setColorAt(1, QtGui.QColor(0, 0, 0, 40))
+            p.setBrush(grad); p.setPen(QtCore.Qt.NoPen); p.drawRoundedRect(px, py, cw, ch, 2, 2)
+        
+        # CONTACTLESS CHIPS (Internal Antenna - Subtle X-Ray Look)
+        else:
+            self._draw_contactless_antenna(p, TW, TH, scale_x, scale_y)
+
+    def _draw_contactless_antenna(self, p, TW, TH, sx, sy):
+        # Subtle internal antenna visualization
+        p.setBrush(QtCore.Qt.NoBrush)
+        color = QtGui.QColor(0, 0, 0, 15) # Very faint shadow of antenna
+        p.setPen(QtGui.QPen(color, 2))
+        
+        if "[LF]" in self.chip_type:
+            # Round coil (125kHz)
+            # Centered roughly on the left half
+            cx, cy = 0.25 * TW, 0.5 * TH
+            for r in range(5):
+                p.drawEllipse(QtCore.QPointF(cx, cy), 12*sx + r*2, 12*sy + r*2)
+        elif "[HF]" in self.chip_type or "[NFC]" in self.chip_type:
+            # Rectangular perimeter coil (13.56MHz)
+            for i in range(4):
+                off = i * 4
+                p.drawRoundedRect(0.1*TW + off, 0.1*TH + off, 0.8*TW - 2*off, 0.8*TH - 2*off, 5, 5)
+        elif "[UHF]" in self.chip_type:
+            # Long dipole antenna center
+            p.drawRoundedRect(0.1*TW, 0.45*TH, 0.8*TW, 0.1*TH, 2, 2)
+            p.drawRoundedRect(0.35*TW, 0.3*TH, 0.3*TW, 0.4*TH, 2, 2)
+
+    def set_chip_type(self, chip_type):
+        self.chip_type = chip_type
+        self._refresh_textures = True
+        self.update()
 
     def add_text_object(self, text="NEW TEXT", side="front", color="#000000"):
         obj = TextObject(text, side, color)
@@ -852,6 +933,40 @@ class MainWindow(QtWidgets.QMainWindow):
         self.add_text_btn.clicked.connect(self.on_add_text_clicked)
         sidebar_layout.addWidget(self.add_text_btn)
 
+        # Chip Section
+        sidebar_layout.addWidget(QtWidgets.QLabel("Integrated Circuit (Chip)"))
+        self.chip_combo = QtWidgets.QComboBox()
+        self.chip_combo.addItems([
+            "None",
+            "-- CONTACT CHIPS --",
+            "SLE4442 (Contact Gold)",
+            "SLE5542 (Contact Gold)",
+            "Atmel/FM4442 (Contact Gold)",
+            "Standard ISO (Contact Gold)",
+            "Standard ISO (Contact Silver)",
+            "-- LF 125 kHz --",
+            "[LF] EM4102",
+            "[LF] TK4100",
+            "-- HF 13.56 MHz --",
+            "[HF] MIFARE Classic 1k",
+            "[HF] MIFARE Classic 4k",
+            "[HF] MIFARE DESFire EV1/2",
+            "[HF] MIFARE Ultralight/C",
+            "[HF] ICODE SLIX",
+            "-- NFC TECHNOLOGY --",
+            "[NFC] NTAG 213",
+            "[NFC] NTAG 215",
+            "[NFC] NTAG 216",
+            "-- UHF 900 MHz --",
+            "[UHF] Alien H3"
+        ])
+        # Disable the category separators
+        for i in [1, 7, 10, 16, 20]:
+            self.chip_combo.model().setData(self.chip_combo.model().index(i, 0), 0, QtCore.Qt.UserRole - 1)
+            
+        self.chip_combo.currentTextChanged.connect(self.on_chip_type_changed)
+        sidebar_layout.addWidget(self.chip_combo)
+
         self.add_emboss_btn = QtWidgets.QPushButton("+ Add Embossed Layer")
         self.add_emboss_btn.setObjectName("EmbossBtn")
         self.add_emboss_btn.clicked.connect(self.on_add_emboss_clicked)
@@ -900,6 +1015,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_material_changed(self, new_mat):
         self.gl_widget.set_card_material(new_mat)
+
+    def on_chip_type_changed(self, new_chip):
+        self.gl_widget.set_chip_type(new_chip)
 
     def on_card_color_changed(self, color_hex):
         self.gl_widget.set_card_color(color_hex)

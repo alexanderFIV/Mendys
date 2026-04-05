@@ -105,7 +105,7 @@ Přidána podpora pro "physical" embossed layers (tlačítko + Add Embossed Laye
 Vylepšená detekce a omezení pohybu textových vrstev (nelze je vytáhnout mimo kartu)
 Kompaktnější a přehlednější TextObjectWidget – všechny ovládací prvky sloučeny do 1–2 řádků (Std/Emboss, Border, Color, Font)
 Přidána validace textu (pouze ASCII znaky)
-**Custom Embossing is posiible but costs much more therefore it will not be includede if needed client can contact the given firm directly and ask about
+**Custom Embossing is possible but costs much more therefore it will not be included if needed client can contact the given firm directly and ask about
 Výrazně vylepšené vykreslování emboss efektů v závislosti na zvolené kvalitě
 Celkové vylepšení UI/UX sidebaru a dark theme konzistence
 Malé optimalizace a úklid kódu
@@ -120,6 +120,6 @@ Přidána vizualizace vnitřní antény (X-ray look) pro bezkontaktní karty:
 Rozšířen sidebar o kategorizovaný výběr čipů pro lepší přehlednost.
 Vylepšené vykreslování kontaktních plošek pro čipy SLE4442 a Atmel/FM4442.
 Stříbrné a zlaté varianty pro standardní ISO kontaktní čipy.
-** New AI used for toadays doccumentation I hope it doesn't suck :D
+** New AI used for toadays documentation I hope it doesn't suck :D
 5.04.2026
 **added chip card selection + chip visualization + chip types not much today unfortunately 

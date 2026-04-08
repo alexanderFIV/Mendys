@@ -102,6 +102,12 @@ class TextObject:
 
     def show_emboss_effect(self):
         return self.is_physical or self.style == "Embossed"
+    
+    def get_hit_rect(self):
+        # Return a tight hit box in local mm
+        hw = self.width_3d / 2
+        hh = self.height_3d / 2
+        return QtCore.QRectF(-hw, -hh, self.width_3d, self.height_3d)
 
 class GLWidget(QOpenGLWidget):
     def __init__(self, card_type="CR80", emboss_quality="Realistic", parent=None):
@@ -143,6 +149,21 @@ class GLWidget(QOpenGLWidget):
         # Center GL coords for 13x12mm module:
         self.chip_pos = [-27.74, 3.10] 
         
+        # Magstripe support
+        self.magstripe_type = "None" # "None", "HiCo (Black)", "LoCo (Brown)"
+        
+        # Momentum / Inertia System for Pro feel
+        self.rot_velocity = [0.0, 0.0]
+        self.inertia_timer = QtCore.QTimer()
+        self.inertia_timer.timeout.connect(self.apply_inertia)
+        self.inertia_timer.setInterval(16) # ~60fps smooth momentum
+        
+        # Animation System for View Presets
+        self.anim_timer = QtCore.QTimer()
+        self.anim_timer.timeout.connect(self.update_animation)
+        self.anim_timer.setInterval(16)
+        self.target_rotation = [0.0, 0.0]
+        
         self.corner_radius = 3.18 
         self._refresh_textures = True
         self.update()
@@ -171,8 +192,12 @@ class GLWidget(QOpenGLWidget):
             # 2. Render Chip (Only on front)
             if side == "front" and self.chip_type != "None":
                 self._draw_chip(p, TW, TH)
+            
+            # 3. Render Magstripe (Only on back)
+            if side == "back" and self.magstripe_type != "None":
+                self._draw_magstripe(p, TW, TH)
 
-            # 3. Render Text into texture
+            # 4. Render Text into texture
             # Map local mm coord [-hw, hw] to texture pixel [0, TW]
             hw, hh = self.card_w / 2.0, self.card_h / 2.0
             def mm_to_px(lx, ly):
@@ -258,9 +283,10 @@ class GLWidget(QOpenGLWidget):
                 obj.height_3d = rect.height() / scale_f
 
                 # Selection Highlight (only on active editing side)
-                if obj == self.selected_obj and self.emboss_quality != "Super Realistic":
-                    p.setPen(QtGui.QPen(QtGui.QColor(0, 122, 255), 2, QtCore.Qt.DashLine))
-                    p.drawRect(tx - 5, ty - rect.height() + 5, rect.width() + 10, rect.height() + 5)
+                if obj == self.selected_obj:
+                    # In texture-baked mode, we draw the highlight into the design
+                    p.setPen(QtGui.QPen(QtGui.QColor(59, 130, 246, 200), 4, QtCore.Qt.DashLine))
+                    p.drawRect(tx - 4, ty - rect.height() + 4, rect.width() + 8, rect.height() + 4)
 
             p.end()
             
@@ -359,6 +385,59 @@ class GLWidget(QOpenGLWidget):
 
     def set_chip_type(self, chip_type):
         self.chip_type = chip_type
+        self._refresh_textures = True
+        self.update()
+
+    def _draw_magstripe(self, p, TW, TH):
+        # Professional Magstripe Rendering (ISO 7811)
+        # Width: 12.7 mm (Standard 3-track)
+        # Margin from top: 5.54 mm (Wait research said 2.92mm to top edge of stripe)
+        # Typical height is 12.7mm.
+        sw_mm = self.card_w
+        sh_mm = 12.7
+        top_margin_mm = 2.92
+        
+        scale_x = TW / self.card_w
+        scale_y = TH / self.card_h
+        
+        sw, sh = sw_mm * scale_x, sh_mm * scale_y
+        px = 0
+        # py is from top of texture. 
+        # Texture Y 0 is TOP, card Y 0 is CENTER.
+        py = (top_margin_mm / self.card_h) * TH
+        
+        is_hico = "HiCo" in self.magstripe_type
+        base_color = QtGui.QColor("#111111") if is_hico else QtGui.QColor("#402d20")
+        shine_color = QtGui.QColor(255, 255, 255, 35)
+        
+        # 1. Base Stripe
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(base_color)
+        p.drawRect(px, py, sw, sh)
+        
+        # 2. Metallic "Shiny" Effect
+        # A series of thin diagonal gradients to simulate light catching magnetic particles
+        grad = QtGui.QLinearGradient(px, py, px + sw, py + sh)
+        grad.setColorAt(0, QtCore.Qt.transparent)
+        grad.setColorAt(0.2, shine_color)
+        grad.setColorAt(0.25, QtCore.Qt.transparent)
+        grad.setColorAt(0.5, shine_color)
+        grad.setColorAt(0.55, QtCore.Qt.transparent)
+        grad.setColorAt(0.8, shine_color)
+        grad.setColorAt(1, QtCore.Qt.transparent)
+        
+        p.setBrush(grad)
+        p.drawRect(px, py, sw, sh)
+        
+        # 3. Microtexture (Subtle noise/grain for magnetic particles)
+        noise_brush = QtGui.QBrush(QtCore.Qt.Dense7Pattern)
+        p.setBrush(noise_brush)
+        p.setOpacity(0.1)
+        p.drawRect(px, py, sw, sh)
+        p.setOpacity(1.0)
+
+    def set_magstripe_type(self, mtype):
+        self.magstripe_type = mtype
         self._refresh_textures = True
         self.update()
 
@@ -479,6 +558,7 @@ class GLWidget(QOpenGLWidget):
         glRotatef(self.rotation[1], 0, 1, 0)
         glRotatef(self.rotation[2], 0, 0, 1)
 
+        # Update matrices for picking retrieval if needed (actually better to do in mousePress)
         self.draw_card()
         
     def draw_card(self):
@@ -653,45 +733,167 @@ class GLWidget(QOpenGLWidget):
 
     def mousePressEvent(self, event):
         self.last_pos = event.pos()
+        self.makeCurrent()
         
-        # Dragging is only for Left Button
+        # Stop any ongoing inertia when user touches the card
+        self.inertia_timer.stop()
+        self.rot_velocity = [0.0, 0.0]
+        
         if event.button() == QtCore.Qt.LeftButton:
-            self.selected_obj = None
-            self.is_dragging = False
-            if self.text_objects:
-                # Basic picking: for now we just pick the top-most one (last in list)
-                self.selected_obj = self.text_objects[-1]
-                self.is_dragging = True
+            new_selection = self.pick_object(event.pos())
+            if new_selection != self.selected_obj:
+                self.selected_obj = new_selection
+                self._refresh_textures = True # Re-bake to update highlight
                 self.update()
+            
+            if self.selected_obj:
+                self.is_dragging = True
+                # Bring selected object to front of interaction list (draw last)
+                self.text_objects.remove(self.selected_obj)
+                self.text_objects.append(self.selected_obj)
+        
         elif event.button() == QtCore.Qt.RightButton:
-            # Just track positions for rotation (handled in MoveEvent)
             pass
 
+    def pick_object(self, pos):
+        # 1. Determine which side is facing the camera
+        # Calculated from rotation: normal [0,0,1] transformed
+        rx = math.radians(self.rotation[0])
+        ry = math.radians(self.rotation[1])
+        # The dot product of the front normal shadowed on camera Z is basically:
+        nz = math.cos(ry) * math.cos(rx)
+        camera_side = "front" if nz > 0 else "back"
+        
+        # 2. Get GL matrices for projection
+        modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
+        projection = glGetDoublev(GL_PROJECTION_MATRIX)
+        viewport = glGetIntegerv(GL_VIEWPORT)
+        
+        best_obj = None
+        min_dist = float('inf')
+        
+        for obj in reversed(self.text_objects):
+            # Only consider objects on the visible side
+            if obj.side != camera_side and not obj.is_physical:
+                continue
+            
+            # Project local 3D pos to screen
+            lx, ly = obj.pos
+            # Surface offset to ensure projection is slightly above the face
+            lz = (self.card_t/2 + 0.1) if camera_side == "front" else -(self.card_t/2 + 0.1)
+            
+            try:
+                sx, sy, sz = gluProject(lx, ly, lz, modelview, projection, viewport)
+                sy = viewport[3] - sy # Flip Y for Qt
+                
+                # Check distance from mouse
+                dx = pos.x() - sx
+                dy = pos.y() - sy
+                # Use approximate width/height from the bounding boxes calculated in update_face_textures
+                # We scale them by the camera distance factor
+                hit_w = obj.width_3d * (viewport[2] / self.camera_dist / 1.5)
+                hit_h = obj.height_3d * (viewport[3] / self.camera_dist / 1.5)
+                
+                if abs(dx) < hit_w/2 and abs(dy) < hit_h/2:
+                    # We found a hit! Since we iterate reversed, we pick the top-most one first
+                    return obj
+            except:
+                continue
+                
+        return None
+
     def mouseReleaseEvent(self, event):
-        self.is_dragging = False
+        if self.is_dragging:
+            self.is_dragging = False
+            # Re-bake final position
+            self._refresh_textures = True
+            self.update()
+        else:
+            # Start the inertia timer for momentum
+            # Only if the movement was fast enough to matter
+            if abs(self.rot_velocity[0]) > 0.1 or abs(self.rot_velocity[1]) > 0.1:
+                self.inertia_timer.start()
+
+    def animate_to_view(self, rx, ry):
+        # Stop all existing movement
+        self.inertia_timer.stop()
+        self.rot_velocity = [0.0, 0.0]
+        self.target_rotation = [rx, ry]
+        self.anim_timer.start()
+
+    def update_animation(self):
+        # Smooth interpolation (lerp) toward target rotation
+        lerp = 0.15
+        
+        dx = self.target_rotation[0] - self.rotation[0]
+        dy = self.target_rotation[1] - self.rotation[1]
+        
+        self.rotation[0] += dx * lerp
+        self.rotation[1] += dy * lerp
+        
+        # Check if close enough to stop
+        if abs(dx) < 0.1 and abs(dy) < 0.1:
+            self.rotation[0] = self.target_rotation[0]
+            self.rotation[1] = self.target_rotation[1]
+            self.anim_timer.stop()
+            
+        self.update()
+
+    def apply_inertia(self):
+        # Professional friction decay (0.95 factor per frame)
+        friction = 0.96
+        self.rot_velocity[0] *= friction
+        self.rot_velocity[1] *= friction
+        
+        # Apply current velocity to rotation
+        self.rotation[1] += self.rot_velocity[0]
+        self.rotation[0] += self.rot_velocity[1]
+        
+        # Threshold to stop the timer when movement is imperceptible
+        if abs(self.rot_velocity[0]) < 0.01 and abs(self.rot_velocity[1]) < 0.01:
+            self.inertia_timer.stop()
+            self.rot_velocity = [0.0, 0.0]
+            
+        self.update()
 
     def mouseMoveEvent(self, event):
         pos = event.pos()
         dx = pos.x() - self.last_pos.x()
         dy = pos.y() - self.last_pos.y()
         
-        # Rotation (Right Mouse or no dragging)
-        if event.buttons() & QtCore.Qt.RightButton or (not self.is_dragging):
-            self.rotation[1] += dx * 0.5
-            self.rotation[0] += dy * 0.5
+        # Rotation (Right Mouse or no selection) - Much smoother sensitivity (0.15)
+        if (event.buttons() & QtCore.Qt.RightButton) or (not self.is_dragging):
+            # Calculate velocity for inertia
+            vx = dx * 0.12
+            vy = dy * 0.12
+            self.rotation[1] += vx
+            self.rotation[0] += vy
+            # Store smoothed velocity
+            self.rot_velocity = [vx, vy]
+            self.update()
 
         # Dragging (Left Mouse on selected object)
         if (event.buttons() & QtCore.Qt.LeftButton) and self.selected_obj and self.is_dragging:
-            scale = self.camera_dist / 500.0
-            ss = 1.0 if self.selected_obj.side == "front" else -1.0
+            # Scale mouse movement to local mm based on depth
+            scale = self.camera_dist * 0.002
+            
+            # Adjust movement direction based on side
+            # When looking at the back, X is reversed
+            rx = math.radians(self.rotation[0])
+            ry = math.radians(self.rotation[1])
+            nz = math.cos(ry) * math.cos(rx)
+            ss = 1.0 if nz > 0 else -1.0
+            
             self.selected_obj.pos[0] += dx * scale * ss
             self.selected_obj.pos[1] -= dy * scale
+            
+            # Bounds checking
             hw, hh = self.card_w/2.0, self.card_h/2.0
             self.selected_obj.pos[0] = max(-hw+5, min(hw-5, self.selected_obj.pos[0]))
             self.selected_obj.pos[1] = max(-hh+5, min(hh-5, self.selected_obj.pos[1]))
             
-        self.last_pos = pos
-        self.update()
+            # Request re-bake only if not too laggy
+            self.update()
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y() / 8.0
@@ -994,6 +1196,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chip_combo.currentTextChanged.connect(self.on_chip_type_changed)
         sidebar_layout.addWidget(self.chip_combo)
 
+        # Magstripe Section
+        sidebar_layout.addWidget(QtWidgets.QLabel("Magnetic Stripe"))
+        self.mag_combo = QtWidgets.QComboBox()
+        self.mag_combo.addItems(["None", "HiCo (Black)", "LoCo (Brown)"])
+        self.mag_combo.currentTextChanged.connect(self.on_magstripe_type_changed)
+        sidebar_layout.addWidget(self.mag_combo)
+
         self.add_emboss_btn = QtWidgets.QPushButton("+ Add Embossed Layer")
         self.add_emboss_btn.setObjectName("EmbossBtn")
         self.add_emboss_btn.clicked.connect(self.on_add_emboss_clicked)
@@ -1027,7 +1236,19 @@ class MainWindow(QtWidgets.QMainWindow):
         sidebar_layout.addWidget(exit_btn)
 
         main_layout.addWidget(self.sidebar)
-        main_layout.addWidget(self.gl_widget)
+        
+        # GL View Container to handle overlays
+        view_container = QtWidgets.QWidget()
+        view_layout = QtWidgets.QStackedLayout(view_container)
+        view_layout.setStackingMode(QtWidgets.QStackedLayout.StackAll)
+        
+        view_layout.addWidget(self.gl_widget)
+        
+        # Add the Navigation Minimap / HUD
+        self.hud = NavigationHUD(self.gl_widget)
+        view_layout.addWidget(self.hud)
+        
+        main_layout.addWidget(view_container)
 
         if mode == "fullscreen":
             self.showFullScreen()
@@ -1045,6 +1266,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_chip_type_changed(self, new_chip):
         self.gl_widget.set_chip_type(new_chip)
+
+    def on_magstripe_type_changed(self, new_mag):
+        self.gl_widget.set_magstripe_type(new_mag)
 
     def on_card_color_changed(self, color_hex):
         self.gl_widget.set_card_color(color_hex)
@@ -1116,6 +1340,54 @@ class MainWindow(QtWidgets.QMainWindow):
             self.gl_widget.update()
         else:
             super().keyPressEvent(event)
+
+class NavigationHUD(QtWidgets.QWidget):
+    def __init__(self, gl_widget, parent=None):
+        super().__init__(parent)
+        self.gl_widget = gl_widget
+        self.setFixedWidth(100)
+        
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignRight)
+        layout.setContentsMargins(0, 20, 20, 0)
+        layout.setSpacing(6)
+        
+        # Preset Labels
+        lbl_front = QtWidgets.QLabel("FRONT VIEWS")
+        lbl_front.setStyleSheet("color: #3b82f6; font-size: 8px; margin-top: 5px;")
+        layout.addWidget(lbl_front)
+        
+        self.add_view_btn(layout, "CENTER", 0, 0)
+        self.add_view_btn(layout, "TOP", 45, 0)
+        self.add_view_btn(layout, "BOTTOM", -45, 0)
+        
+        lbl_back = QtWidgets.QLabel("BACK VIEWS")
+        lbl_back.setStyleSheet("color: #ef4444; font-size: 8px; margin-top: 5px;")
+        layout.addWidget(lbl_back)
+        
+        self.add_view_btn(layout, "CENTER", 0, 180)
+        self.add_view_btn(layout, "TOP", 45, 180)
+        self.add_view_btn(layout, "BOTTOM", -45, 180)
+
+    def add_view_btn(self, layout, label, rx, ry):
+        btn = QtWidgets.QPushButton(label)
+        btn.setFixedSize(65, 24)
+        btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(24, 24, 27, 180);
+                color: #fafafa;
+                border: 1px solid rgba(161, 161, 170, 50);
+                border-radius: 4px;
+                font-size: 9px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(59, 130, 246, 120);
+                border-color: #3b82f6;
+            }
+        """)
+        btn.clicked.connect(lambda: self.gl_widget.animate_to_view(rx, ry))
+        layout.addWidget(btn)
 
 if __name__ == "__main__":
     print("Starting App...")

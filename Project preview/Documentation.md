@@ -123,3 +123,30 @@ Stříbrné a zlaté varianty pro standardní ISO kontaktní čipy.
 ** New AI used for toadays documentation I hope it doesn't suck :D
 5.04.2026
 **added chip card selection + chip visualization + chip types not much today unfortunately 
+
+07.04.2026
+Nové a změněné funkce
+Přidána podpora pro magnetické proužky (Magstripe) v konfiguraci karty.
+Možnost volby mezi HiCo (černý, vysoká koercivita) a LoCo (hnědý, nízká koercivita) proužkem.
+Realistické vykreslování na zadní straně karty s metalickým odleskem:
+- Implementovány diagonální světelné přechody (shine effect) simulující odraz světla od magnetických částic.
+- Přidána jemná mikrotextura pro autentičtější vzhled materiálu.
+- Umístění odpovídá standardu ISO 7811 (šířka 12.7 mm, horní okraj 2.92 mm).
+Rozšířen sidebar o sekci "Magnetic Stripe" pro rychlou změnu typu proužku.
+
+08.04.2026
+Nové a změněné funkce
+Kompletní rework interakce s 3D modelem a textovými vrstvami pro profesionální "CAD-like" feel.
+Implementován 3D Picking Systém:
+- Uživatel může nyní kliknutím (LMB) přímo na libovolnou textovou vrstvu na kartě tuto vrstvu vybrat.
+- Systém používá souřadnicovou projekci (gluProject) a automaticky detekuje viditelnou stranu karty.
+- Přidán vizuální highlight (modré čárkované ohraničení) pro aktuálně vybraný objekt.
+Vylepšená fyzika rotace (Inertia Engine):
+- Přidána setrvačnost (momentum) – při rychlém "švihnutí" myší se karta dál plynule otáčí a plynule zastavuje (friction decay 0.96).
+- Rotace se okamžitě "chytí" a zastaví při dalším kliknutí pro přesné polohování vrstev.
+- Optimalizována citlivost rotace na hodnotu 0.15 pro lepší kontrolu.
+Přidán Navigation HUD (Minimap):
+- Panel v pravém horním rohu pro bleskovou navigaci mezi standardními pohledy.
+- Obsahuje 6 presetů (Center, Top 45°, Bottom -45°) pro přední i zadní stranu.
+- Implementována hladká filmová interpolace (Lerp) při přechodu mezi kamerovými pohledy.
+- HUD je stylován jako semi-transparentní overlay nekolidující s hlavním zobrazením.

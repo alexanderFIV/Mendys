@@ -1,4 +1,5 @@
 import math
+import random
 from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from OpenGL.GL import *
@@ -10,7 +11,6 @@ class StartMenuDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("3D Preview - Start Menu")
-        self.setModal(True)
         self.setModal(True)
         self.resize(300, 320)
         self.setStyleSheet("""
@@ -109,6 +109,20 @@ class TextObject:
         hh = self.height_3d / 2
         return QtCore.QRectF(-hw, -hh, self.width_3d, self.height_3d)
 
+class GraphicObject:
+    def __init__(self, image, side="front", obj_type="custom"):
+        self.image = image
+        self.pos = [0, 0] # mm
+        self.side = side
+        self.obj_type = obj_type
+        # Default sizes in mm
+        if obj_type == "qr": self.size_mm = [20, 20]
+        elif obj_type == "barcode": self.size_mm = [35, 15]
+        else: self.size_mm = [25, 25] # Default for custom
+        
+        self.width_3d = self.size_mm[0]
+        self.height_3d = self.size_mm[1]
+
 class GLWidget(QOpenGLWidget):
     def __init__(self, card_type="CR80", emboss_quality="Realistic", parent=None):
         # Initialize the OpenGL widget and default rotation angles
@@ -165,6 +179,12 @@ class GLWidget(QOpenGLWidget):
         self.target_rotation = [0.0, 0.0]
         
         self.corner_radius = 3.18 
+        
+        self.text_objects = []
+        self.graphic_objects = []
+        self.selected_obj = None
+        self.is_dragging = False
+        
         self._refresh_textures = True
         self.update()
 
@@ -284,9 +304,24 @@ class GLWidget(QOpenGLWidget):
 
                 # Selection Highlight (only on active editing side)
                 if obj == self.selected_obj:
-                    # In texture-baked mode, we draw the highlight into the design
                     p.setPen(QtGui.QPen(QtGui.QColor(59, 130, 246, 200), 4, QtCore.Qt.DashLine))
                     p.drawRect(tx - 4, ty - rect.height() + 4, rect.width() + 8, rect.height() + 4)
+
+            # 5. Render Graphics (QR, Barcode, Custom Images)
+            for obj in self.graphic_objects:
+                if obj.side != side: continue
+                
+                # Convert mm to px
+                gw, gh = obj.size_mm[0] * scale_x, obj.size_mm[1] * scale_y
+                gx = (obj.pos[0] + self.card_w/2) * scale_x - gw/2
+                gy = (self.card_h/2 - obj.pos[1]) * scale_y - gh/2
+                
+                p.drawImage(QtCore.QRectF(gx, gy, gw, gh), obj.image)
+                
+                # Highlight if selected
+                if obj == self.selected_obj:
+                    p.setPen(QtGui.QPen(QtGui.QColor(59, 130, 246, 200), 4, QtCore.Qt.DashLine))
+                    p.drawRect(gx - 4, gy - 4, gw + 8, gh + 8)
 
             p.end()
             
@@ -444,9 +479,17 @@ class GLWidget(QOpenGLWidget):
     def add_text_object(self, text="NEW TEXT", side="front", color="#000000"):
         obj = TextObject(text, side, color)
         self.text_objects.append(obj)
+        self.selected_obj = obj
         self._refresh_textures = True
         self.update()
         return obj
+
+    def add_graphic_object(self, image, side="front", obj_type="custom"):
+        obj = GraphicObject(image, side, obj_type)
+        self.graphic_objects.append(obj)
+        self.selected_obj = obj
+        self._refresh_textures = True
+        self.update()
 
     def set_card_color(self, hex_color):
         self.card_color = QtGui.QColor(hex_color)
@@ -772,34 +815,33 @@ class GLWidget(QOpenGLWidget):
         best_obj = None
         min_dist = float('inf')
         
-        for obj in reversed(self.text_objects):
-            # Only consider objects on the visible side
-            if obj.side != camera_side and not obj.is_physical:
+        # Check both Texts and Graphics
+        all_objs = self.text_objects + self.graphic_objects
+        
+        for obj in reversed(all_objs):
+            # Only consider objects on the visible side (or physical)
+            is_phys = hasattr(obj, 'is_physical') and obj.is_physical
+            if obj.side != camera_side and not is_phys:
                 continue
             
             # Project local 3D pos to screen
             lx, ly = obj.pos
-            # Surface offset to ensure projection is slightly above the face
             lz = (self.card_t/2 + 0.1) if camera_side == "front" else -(self.card_t/2 + 0.1)
             
             try:
                 sx, sy, sz = gluProject(lx, ly, lz, modelview, projection, viewport)
-                sy = viewport[3] - sy # Flip Y for Qt
+                sy = viewport[3] - sy
                 
-                # Check distance from mouse
                 dx = pos.x() - sx
                 dy = pos.y() - sy
-                # Use approximate width/height from the bounding boxes calculated in update_face_textures
-                # We scale them by the camera distance factor
+                
+                # Use cached 3D dimension
                 hit_w = obj.width_3d * (viewport[2] / self.camera_dist / 1.5)
                 hit_h = obj.height_3d * (viewport[3] / self.camera_dist / 1.5)
                 
                 if abs(dx) < hit_w/2 and abs(dy) < hit_h/2:
-                    # We found a hit! Since we iterate reversed, we pick the top-most one first
                     return obj
-            except:
-                continue
-                
+            except: continue
         return None
 
     def mouseReleaseEvent(self, event):
@@ -895,6 +937,9 @@ class GLWidget(QOpenGLWidget):
             # Request re-bake only if not too laggy
             self.update()
 
+        self.last_pos = pos
+        self.update()
+
     def wheelEvent(self, event):
         delta = event.angleDelta().y() / 8.0
         if delta == 0: return
@@ -918,7 +963,7 @@ class TextObjectWidget(QtWidgets.QWidget):
             QComboBox:hover { background-color: #27272a; }
         """)
         
-        layout = QtWidgets.QVBoxLayout(self)
+        layout = QtWidgets.QVBoxLayout(self) 
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(5)
         
@@ -1202,6 +1247,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mag_combo.addItems(["None", "HiCo (Black)", "LoCo (Brown)"])
         self.mag_combo.currentTextChanged.connect(self.on_magstripe_type_changed)
         sidebar_layout.addWidget(self.mag_combo)
+        
+        # Graphics Section
+        sidebar_layout.addWidget(QtWidgets.QLabel("Custom Graphics / Codes"))
+        codes_layout = QtWidgets.QHBoxLayout()
+        
+        self.add_qr_btn = QtWidgets.QPushButton("+ Import QR")
+        self.add_qr_btn.setObjectName("ActionBtn")
+        self.add_qr_btn.clicked.connect(self.on_add_qr_clicked)
+        
+        self.add_bar_btn = QtWidgets.QPushButton("+ Import Barcode")
+        self.add_bar_btn.setObjectName("ActionBtn")
+        self.add_bar_btn.clicked.connect(self.on_add_barcode_clicked)
+        
+        codes_layout.addWidget(self.add_qr_btn)
+        codes_layout.addWidget(self.add_bar_btn)
+        sidebar_layout.addLayout(codes_layout)
 
         self.add_emboss_btn = QtWidgets.QPushButton("+ Add Embossed Layer")
         self.add_emboss_btn.setObjectName("EmbossBtn")
@@ -1269,6 +1330,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_magstripe_type_changed(self, new_mag):
         self.gl_widget.set_magstripe_type(new_mag)
+
+    def on_add_qr_clicked(self):
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import QR or Logo", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+        if file_path:
+            img = QtGui.QImage(file_path)
+            if not img.isNull():
+                self.gl_widget.add_graphic_object(img, obj_type="qr")
+
+    def on_add_barcode_clicked(self):
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import Barcode", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+        if file_path:
+            img = QtGui.QImage(file_path)
+            if not img.isNull():
+                self.gl_widget.add_graphic_object(img, obj_type="barcode")
 
     def on_card_color_changed(self, color_hex):
         self.gl_widget.set_card_color(color_hex)

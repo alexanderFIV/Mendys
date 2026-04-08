@@ -150,3 +150,8 @@ Přidán Navigation HUD (Minimap):
 - Obsahuje 6 presetů (Center, Top 45°, Bottom -45°) pro přední i zadní stranu.
 - Implementována hladká filmová interpolace (Lerp) při přechodu mezi kamerovými pohledy.
 - HUD je stylován jako semi-transparentní overlay nekolidující s hlavním zobrazením.
+Integrovaný systém grafických vrstev (Graphics & Codes):
+- Přidána podpora pro import externích grafik (QR kódy, čárové kódy, loga).
+- Specializovaná tlačítka pro import QR kódů (čtvercový poměr) a čárových kódů (obdélníkový poměr) s přednastaveným škálováním.
+- Grafiky jsou plně interaktivní, lze je přesouvat a vybírat pomocí 3D Pickingu stejně jako textové vrstvy.
+- Odstraněn systém generování placeholderů ve prospěch importu reálných podkladů.

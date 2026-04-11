@@ -1300,14 +1300,15 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # GL View Container to handle overlays
         view_container = QtWidgets.QWidget()
-        view_layout = QtWidgets.QStackedLayout(view_container)
-        view_layout.setStackingMode(QtWidgets.QStackedLayout.StackAll)
+        view_layout = QtWidgets.QGridLayout(view_container)
+        view_layout.setContentsMargins(0, 0, 0, 0)
         
-        view_layout.addWidget(self.gl_widget)
+        # Add GL widget to fill the whole area
+        view_layout.addWidget(self.gl_widget, 0, 0)
         
-        # Add the Navigation Minimap / HUD
-        self.hud = NavigationHUD(self.gl_widget)
-        view_layout.addWidget(self.hud)
+        # Add the Navigation ViewCube (AutoCAD Style) to Top-Right
+        self.hud = ViewCubeHUD(self.gl_widget)
+        view_layout.addWidget(self.hud, 0, 0, QtCore.Qt.AlignTop | QtCore.Qt.AlignRight)
         
         main_layout.addWidget(view_container)
 
@@ -1416,53 +1417,81 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             super().keyPressEvent(event)
 
-class NavigationHUD(QtWidgets.QWidget):
+class ViewCubeHUD(QtWidgets.QWidget):
     def __init__(self, gl_widget, parent=None):
         super().__init__(parent)
         self.gl_widget = gl_widget
-        self.setFixedWidth(100)
+        self.setFixedSize(130, 160)
         
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignRight)
-        layout.setContentsMargins(0, 20, 20, 0)
-        layout.setSpacing(6)
+        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(5)
         
-        # Preset Labels
-        lbl_front = QtWidgets.QLabel("FRONT VIEWS")
-        lbl_front.setStyleSheet("color: #3b82f6; font-size: 8px; margin-top: 5px;")
-        layout.addWidget(lbl_front)
+        # Side Switcher (Tabs front/back)
+        side_layout = QtWidgets.QHBoxLayout()
+        self.btn_f = QtWidgets.QPushButton("FRONT")
+        self.btn_b = QtWidgets.QPushButton("BACK")
+        for b in [self.btn_f, self.btn_b]:
+            b.setCheckable(True)
+            b.setFixedSize(55, 20)
+            b.setStyleSheet("font-size: 8px; font-weight: bold; background: #18181b; color: #a1a1aa; border: 1px solid #27272a;")
+            side_layout.addWidget(b)
         
-        self.add_view_btn(layout, "CENTER", 0, 0)
-        self.add_view_btn(layout, "TOP", 45, 0)
-        self.add_view_btn(layout, "BOTTOM", -45, 0)
+        self.btn_f.setChecked(True)
+        self.btn_f.clicked.connect(lambda: self.switch_side("front"))
+        self.btn_b.clicked.connect(lambda: self.switch_side("back"))
+        main_layout.addLayout(side_layout)
         
-        lbl_back = QtWidgets.QLabel("BACK VIEWS")
-        lbl_back.setStyleSheet("color: #ef4444; font-size: 8px; margin-top: 5px;")
-        layout.addWidget(lbl_back)
+        # The "Cube" Grid (3x3)
+        # Arrangement:
+        # [TL] [T] [TR]
+        # [L ] [F] [R ]
+        # [BL] [B] [BR]
+        cube_container = QtWidgets.QWidget()
+        cube_container.setStyleSheet("background: rgba(24, 24, 27, 180); border-radius: 8px; border: 1px solid rgba(161,161,170,30);")
+        grid = QtWidgets.QGridLayout(cube_container)
+        grid.setContentsMargins(5, 5, 5, 5)
+        grid.setSpacing(2)
         
-        self.add_view_btn(layout, "CENTER", 0, 180)
-        self.add_view_btn(layout, "TOP", 45, 180)
-        self.add_view_btn(layout, "BOTTOM", -45, 180)
+        # Views [rx, ry]
+        self.views = {
+            "TL": [35, 35],  "T": [35, 0],  "TR": [35, -35],
+            "L": [0, 35],    "C": [0, 0],   "R": [0, -35],
+            "BL": [-35, 35], "B": [-35, 0], "BR": [-35, -35]
+        }
+        
+        self.btns = {}
+        for key, coords in self.views.items():
+            btn = QtWidgets.QPushButton()
+            btn.setFixedSize(30, 30)
+            btn.setCursor(QtCore.Qt.PointingHandCursor)
+            
+            # Specialty styling for Center (Face) vs Corners vs Edges
+            color = "#3b82f6" if key == "C" else "#3f3f46"
+            btn.setStyleSheet(f"background: {color}; border-radius: 2px;")
+            if key == "C": btn.setText("FACE")
+            
+            btn.clicked.connect(lambda checked, c=coords: self.go_to(c))
+            grid.addWidget(btn, list(self.views.keys()).index(key)//3, list(self.views.keys()).index(key)%3)
+            self.btns[key] = btn
+            
+        main_layout.addWidget(cube_container)
+        
+        lbl = QtWidgets.QLabel("VIEW NAVIGATION")
+        lbl.setAlignment(QtCore.Qt.AlignCenter)
+        lbl.setStyleSheet("color: #71717a; font-size: 7px; letter-spacing: 1px; margin-top: 2px;")
+        main_layout.addWidget(lbl)
 
-    def add_view_btn(self, layout, label, rx, ry):
-        btn = QtWidgets.QPushButton(label)
-        btn.setFixedSize(65, 24)
-        btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(24, 24, 27, 180);
-                color: #fafafa;
-                border: 1px solid rgba(161, 161, 170, 50);
-                border-radius: 4px;
-                font-size: 9px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(59, 130, 246, 120);
-                border-color: #3b82f6;
-            }
-        """)
-        btn.clicked.connect(lambda: self.gl_widget.animate_to_view(rx, ry))
-        layout.addWidget(btn)
+    def switch_side(self, side):
+        self.btn_f.setChecked(side == "front")
+        self.btn_b.setChecked(side == "back")
+        ry = 0 if side == "front" else 180
+        self.gl_widget.animate_to_view(self.gl_widget.rotation[0], ry)
+
+    def go_to(self, coords):
+        # Apply current side (front/back) to the selection
+        ry_offset = 0 if self.btn_f.isChecked() else 180
+        self.gl_widget.animate_to_view(coords[0], coords[1] + ry_offset)
 
 if __name__ == "__main__":
     print("Starting App...")

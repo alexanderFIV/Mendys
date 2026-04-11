@@ -155,3 +155,12 @@ Integrovaný systém grafických vrstev (Graphics & Codes):
 - Specializovaná tlačítka pro import QR kódů (čtvercový poměr) a čárových kódů (obdélníkový poměr) s přednastaveným škálováním.
 - Grafiky jsou plně interaktivní, lze je přesouvat a vybírat pomocí 3D Pickingu stejně jako textové vrstvy.
 - Odstraněn systém generování placeholderů ve prospěch importu reálných podkladů.
+
+11.04.2026
+Nové a změněné funkce
+Kompletní redesign navigačního panelu na styl AutoCAD ViewCube:
+- Původní seznam tlačítek nahrazen interaktivní maticí pohledů v pravém horním rohu.
+- Podpora pro přímou navigaci na stěny (Face), hrany (Edges) a rohy (Corners - Isometrické pohledy).
+- Přidán přepínač stran (Front/Back) integrovaný přímo v HUD panelu.
+- Vylepšený vizuální styl s poloprůhledným pozadím a barevným zvýrazněním aktivních prvků.
+- Zachována plynulá animace kamery při přepínání mezi pohledy.

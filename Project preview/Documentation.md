@@ -1,5 +1,6 @@
 **This was written by AI I only fix the thiings I do not like personally tho I am not sure If this documentation is supposed to be uniformed or if  a more of a datum based input is preffered/wanted. For the time being I am will use the latter.
 **I am not sure if shanooniganing is a word but I like it. - hence I want it here and in my project please do not critize me for that :D
+**just for info I DO read what the AI writes because there CAN be mishaps in communication. And I would like to stay on top of it
 16.03.2026 
 3D Card Preview
 Popis a cíl projektu
@@ -164,3 +165,8 @@ Kompletní redesign navigačního panelu na styl AutoCAD ViewCube:
 - Přidán přepínač stran (Front/Back) integrovaný přímo v HUD panelu.
 - Vylepšený vizuální styl s poloprůhledným pozadím a barevným zvýrazněním aktivních prvků.
 - Zachována plynulá animace kamery při přepínání mezi pohledy.
+14.04.2026
+- Implementace klávesových zkratek pro správu vrstev:
+    - Přidána podpora pro klávesy Delete a Backspace.
+    - Uživatel může nyní okamžitě odstranit vybranou textovou nebo grafickou vrstvu přímo v 3D náhledu.
+    **You do not need to anymore go and find the given layer of text in the sidebar and delete it from there. - hence the commit will be titled quality of life improvement

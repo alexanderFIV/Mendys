@@ -178,6 +178,7 @@ class GLWidget(QOpenGLWidget):
         self.anim_timer.setInterval(16)
         self.target_rotation = [0.0, 0.0]
         
+        self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.corner_radius = 3.18 
         
         self.text_objects = []
@@ -773,6 +774,21 @@ class GLWidget(QOpenGLWidget):
     def update(self):
         self._refresh_textures = True
         super().update()
+
+    def keyPressEvent(self, event):
+        if event.key() in [QtCore.Qt.Key_Delete, QtCore.Qt.Key_Backspace]:
+            if self.selected_obj:
+                # Remove from appropriate list
+                if self.selected_obj in self.text_objects:
+                    self.text_objects.remove(self.selected_obj)
+                elif self.selected_obj in self.graphic_objects:
+                    self.graphic_objects.remove(self.selected_obj)
+                
+                self.selected_obj = None
+                self._refresh_textures = True
+                self.update()
+        else:
+            super().keyPressEvent(event)
 
     def mousePressEvent(self, event):
         self.last_pos = event.pos()

@@ -1,5 +1,5 @@
-**This was written by AI I only fix the thiings I do not like personally tho I am not sure If this documentation is supposed to be uniformed or if  a more of a datum based input is preffered/wanted. For the time being I am will use the latter.
-**I am not sure if shanooniganing is a word but I like it. - hence I want it here and in my project please do not critize me for that :D
+**This was written by AI I only fix the things I do not like personally tho I am not sure If this documentation is supposed to be uniformed or if a more of a datum based input is preferred/wanted. For the time being I am will use the latter.
+**I am not sure if shanooniganing is a word but I like it. - hence I want it here and in my project please do not criticize me for that :D
 **just for info I DO read what the AI writes because there CAN be mishaps in communication. And I would like to stay on top of it
 16.03.2026 
 3D Card Preview
@@ -121,7 +121,7 @@ Přidána vizualizace vnitřní antény (X-ray look) pro bezkontaktní karty:
 Rozšířen sidebar o kategorizovaný výběr čipů pro lepší přehlednost.
 Vylepšené vykreslování kontaktních plošek pro čipy SLE4442 a Atmel/FM4442.
 Stříbrné a zlaté varianty pro standardní ISO kontaktní čipy.
-** New AI used for toadays documentation I hope it doesn't suck :D
+** New AI used for today's documentation I hope it doesn't suck :D
 5.04.2026
 **added chip card selection + chip visualization + chip types not much today unfortunately 
 

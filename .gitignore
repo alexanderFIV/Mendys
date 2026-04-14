@@ -1,13 +1,11 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Logs
-crash.log
-output.log
-*.log
-
-# OS generated files
-.DS_Store
-Thumbs.db
+.pytest_cache/
+.vscode/
+.idea/
+*.png
+*.jpg
+*.jpeg
+*.bmp
+!Project preview/resources/ # Keep resource images if any explicitly needed

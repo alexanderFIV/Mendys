@@ -4,7 +4,7 @@ from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from OpenGL.GL import *
 from OpenGL.GLU import *
-from Ppcolorpallete import ColorSwatch, create_color_palette
+from Ppcolorpalette import ColorSwatch, create_color_palette
 
 
 class StartMenuDialog(QtWidgets.QDialog):

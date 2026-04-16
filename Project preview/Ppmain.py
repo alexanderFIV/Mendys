@@ -1,6 +1,10 @@
+import sys
 import math
 import random
-from PySide6 import QtWidgets, QtCore, QtGui
+import json
+import base64
+import numpy as np
+from PySide6 import QtCore, QtGui, QtWidgets, QtOpenGLWidgets
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -96,6 +100,31 @@ class TextObject:
         self.height_3d = 5.0 # Approximate height in local units
         self.tex_3d = None # For Super Realistic 3D extrusion
 
+    def to_dict(self):
+        return {
+            "text": self.text,
+            "side": self.side,
+            "pos": self.pos,
+            "color": self.color.name(),
+            "font_family": self.font.family(),
+            "font_size": self.font.pointSize(),
+            "font_bold": self.font.bold(),
+            "style": self.style,
+            "is_physical": self.is_physical,
+            "border_enabled": self.border_enabled
+        }
+
+    @staticmethod
+    def from_dict(data):
+        obj = TextObject(data["text"], data["side"], data["color"])
+        obj.pos = data["pos"]
+        obj.font = QtGui.QFont(data["font_family"], data["font_size"])
+        obj.font.setBold(data["font_bold"])
+        obj.style = data["style"]
+        obj.is_physical = data["is_physical"]
+        obj.border_enabled = data["border_enabled"]
+        return obj
+
     def validate_text(self, text):
         # Only allow Latin text and common punctuation
         return "".join([c for c in text if c.isascii()])
@@ -123,12 +152,40 @@ class GraphicObject:
         self.width_3d = self.size_mm[0]
         self.height_3d = self.size_mm[1]
 
+    def to_dict(self):
+        # Convert QImage to Base64 PNG
+        ba = QtCore.QByteArray()
+        buffer = QtCore.QBuffer(ba)
+        buffer.open(QtCore.QIODevice.WriteOnly)
+        self.image.save(buffer, "PNG")
+        img_b64 = ba.toBase64().data().decode()
+        
+        return {
+            "side": self.side,
+            "obj_type": self.obj_type,
+            "pos": self.pos,
+            "size_mm": self.size_mm,
+            "image_b64": img_b64
+        }
+
+    @staticmethod
+    def from_dict(data):
+        img_data = base64.b64decode(data["image_b64"])
+        img = QtGui.QImage.fromData(img_data)
+        obj = GraphicObject(img, data["side"], data["obj_type"])
+        obj.pos = data["pos"]
+        obj.size_mm = data["size_mm"]
+        obj.width_3d = obj.size_mm[0]
+        obj.height_3d = obj.size_mm[1]
+        return obj
+
 class GLWidget(QOpenGLWidget):
     def __init__(self, card_type="CR80", emboss_quality="Realistic", parent=None):
         # Initialize the OpenGL widget and default rotation angles
         super().__init__(parent)
         self.rotation = [20, -30, 0] # Initial attractive angle
         self.camera_dist = 140.0 
+        self.card_type = card_type
         self.set_card_dimensions(card_type)
         self.emboss_quality = emboss_quality
         self.quadric = None
@@ -188,6 +245,10 @@ class GLWidget(QOpenGLWidget):
         
         self._refresh_textures = True
         self.update()
+
+    def set_card_type(self, card_type):
+        self.card_type = card_type
+        self.set_card_dimensions(card_type)
 
     def update_face_textures(self):
         # Fusing all design elements into 1024x640 textures for each side
@@ -309,6 +370,8 @@ class GLWidget(QOpenGLWidget):
                     p.drawRect(tx - 4, ty - rect.height() + 4, rect.width() + 8, rect.height() + 4)
 
             # 5. Render Graphics (QR, Barcode, Custom Images)
+            scale_x = TW / self.card_w
+            scale_y = TH / self.card_h
             for obj in self.graphic_objects:
                 if obj.side != side: continue
                 
@@ -489,6 +552,37 @@ class GLWidget(QOpenGLWidget):
         obj = GraphicObject(image, side, obj_type)
         self.graphic_objects.append(obj)
         self.selected_obj = obj
+        self._refresh_textures = True
+        self.update()
+
+    def save_project(self, file_path):
+        data = {
+            "version": "1.0",
+            "card_type": self.card_type,
+            "card_color": self.card_color.name(),
+            "card_material": self.card_material,
+            "chip_type": self.chip_type,
+            "magstripe_type": self.magstripe_type,
+            "text_objects": [obj.to_dict() for obj in self.text_objects],
+            "graphic_objects": [obj.to_dict() for obj in self.graphic_objects]
+        }
+        with open(file_path, 'w') as f:
+            json.dump(data, f, indent=4)
+
+    def load_project(self, file_path):
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+            
+        self.set_card_type(data["card_type"])
+        self.card_color = QtGui.QColor(data["card_color"])
+        self.card_material = data["card_material"]
+        self.chip_type = data["chip_type"]
+        self.magstripe_type = data["magstripe_type"]
+        
+        self.text_objects = [TextObject.from_dict(o) for o in data["text_objects"]]
+        self.graphic_objects = [GraphicObject.from_dict(o) for o in data["graphic_objects"]]
+        
+        self.selected_obj = None
         self._refresh_textures = True
         self.update()
 
@@ -1284,6 +1378,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.add_emboss_btn.setObjectName("EmbossBtn")
         self.add_emboss_btn.clicked.connect(self.on_add_emboss_clicked)
         sidebar_layout.addWidget(self.add_emboss_btn)
+        
+        # Save / Load Section
+        sidebar_layout.addSpacing(10)
+        sidebar_layout.addWidget(QtWidgets.QLabel("Project Management"))
+        save_layout = QtWidgets.QHBoxLayout()
+        self.save_btn = QtWidgets.QPushButton("Save Project")
+        self.save_btn.setObjectName("ActionBtn")
+        self.save_btn.clicked.connect(self.on_save_project)
+        self.load_btn = QtWidgets.QPushButton("Load Project")
+        self.load_btn.setObjectName("ActionBtn")
+        self.load_btn.clicked.connect(self.on_load_project)
+        save_layout.addWidget(self.save_btn)
+        save_layout.addWidget(self.load_btn)
+        sidebar_layout.addLayout(save_layout)
 
         # Scroll area for text objects
         self.scroll = QtWidgets.QScrollArea()
@@ -1364,6 +1472,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_card_color_changed(self, color_hex):
         self.gl_widget.set_card_color(color_hex)
+        
+    def on_save_project(self):
+        folder = "c:/Users/alexa/Documents/Mendys/Mendys-1/Project preview/Saves"
+        if not QtCore.QDir(folder).exists():
+            QtCore.QDir().mkpath(folder)
+            
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Project", folder, "Mendys Project (*.json)")
+        if file_path:
+            self.gl_widget.save_project(file_path)
+
+    def on_load_project(self):
+        folder = "c:/Users/alexa/Documents/Mendys/Mendys-1/Project preview/Saves"
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Load Project", folder, "Mendys Project (*.json)")
+        if file_path:
+            self.gl_widget.load_project(file_path)
 
     def on_import_image_clicked(self):
         # 1. Open File Dialog
@@ -1488,7 +1611,8 @@ class ViewCubeHUD(QtWidgets.QWidget):
             if key == "C": btn.setText("FACE")
             
             btn.clicked.connect(lambda checked, c=coords: self.go_to(c))
-            grid.addWidget(btn, list(self.views.keys()).index(key)//3, list(self.views.keys()).index(key)%3)
+            idx = list(self.views.keys()).index(key)
+            grid.addWidget(btn, idx // 3, idx % 3)
             self.btns[key] = btn
             
         main_layout.addWidget(cube_container)

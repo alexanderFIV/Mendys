@@ -170,3 +170,17 @@ Kompletní redesign navigačního panelu na styl AutoCAD ViewCube:
     - Přidána podpora pro klávesy Delete a Backspace.
     - Uživatel může nyní okamžitě odstranit vybranou textovou nebo grafickou vrstvu přímo v 3D náhledu.
     **You do not need to anymore go and find the given layer of text in the sidebar and delete it from there. - hence the commit will be titled quality of life improvement
+
+
+
+16.04.2026
+Opravy a technická stabilizace (Code Fixes)
+- Opraveny chyby, které způsobovaly pád aplikace při interakci s grafickými vrstvami.
+- Implementována chybějící metoda set_card_type(), která nyní korektně zajišťuje dynamickou změnu rozměrů karty během běhu bez nutnosti restartu.
+- Opraveno škálování grafických objektů (loga, QR kódy) při pečení do textur – nyní se zobrazují ve správném poměru stran nezávisle na rozlišení textury.
+- Opraveno seskupení tlačítek v navigačním HUD panelu (ViewCube) – oprava indexování v mřížce (Grid Layout).
+- Přidáno ukládání aktuálního typu karty do instance GLWidgetu pro lepší konzistenci při správě projektů.
+
+Technické detaily a architektura
+Ukládání projektů probíhá pomocí formátu JSON, kde jsou serializovány veškeré parametry karty (barva, materiál, čip). Textové a grafické vrstvy mají vlastní metody `to_dict()`, přičemž importované obrázky jsou pro zachování integrity projektu převáděny na Base64 řetězce a ukládány přímo do JSONu. Pro efektivní práci s datovými poli a matematické výpočty je využíván `numpy`, zatímco modul `base64` slouží k hladké integraci externích grafických podkladů do uložených projektů. Tato kombinace technologií umožňuje vysoký výkon při 3D náhledu a zároveň snadnou přenositelnost uložených návrhů.
+

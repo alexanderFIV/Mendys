@@ -1,6 +1,4 @@
-**This was written by AI I only fix the things I do not like personally tho I am not sure If this documentation is supposed to be uniformed or if a more of a datum based input is preferred/wanted. For the time being I am will use the latter.
-**I am not sure if shanooniganing is a word but I like it. - hence I want it here and in my project please do not criticize me for that :D
-**just for info I DO read what the AI writes because there CAN be mishaps in communication. And I would like to stay on top of it
+**Tato dokumentace byla vytvořena jako záznam vývoje projektu 3D Card Preview. Cílem je poskytnout přehled o funkcích, technické architektuře a postupu prací. Texty jsou průběžně kontrolovány, aby byla zajištěna jejich přesnost a profesionální úroveň.
 16.03.2026 
 3D Card Preview
 Popis a cíl projektu
@@ -106,7 +104,7 @@ Přidána podpora pro "physical" embossed layers (tlačítko + Add Embossed Laye
 Vylepšená detekce a omezení pohybu textových vrstev (nelze je vytáhnout mimo kartu)
 Kompaktnější a přehlednější TextObjectWidget – všechny ovládací prvky sloučeny do 1–2 řádků (Std/Emboss, Border, Color, Font)
 Přidána validace textu (pouze ASCII znaky)
-**Custom Embossing is possible but costs much more therefore it will not be included if needed client can contact the given firm directly and ask about
+**Vlastní embossing (Custom Embossing) je technicky možný, avšak z důvodu vyšší náročnosti na výrobu není standardně zahrnut. Klienti mohou v případě zájmu kontaktovat výrobce přímo pro individuální konzultaci.
 Výrazně vylepšené vykreslování emboss efektů v závislosti na zvolené kvalitě
 Celkové vylepšení UI/UX sidebaru a dark theme konzistence
 Malé optimalizace a úklid kódu
@@ -121,9 +119,9 @@ Přidána vizualizace vnitřní antény (X-ray look) pro bezkontaktní karty:
 Rozšířen sidebar o kategorizovaný výběr čipů pro lepší přehlednost.
 Vylepšené vykreslování kontaktních plošek pro čipy SLE4442 a Atmel/FM4442.
 Stříbrné a zlaté varianty pro standardní ISO kontaktní čipy.
-** New AI used for today's documentation I hope it doesn't suck :D
+**Aktualizace dokumentace pro dnešní přehled funkcí.
 5.04.2026
-**added chip card selection + chip visualization + chip types not much today unfortunately 
+**Doplněn výběr čipových karet a jejich vizualizace.
 
 07.04.2026
 Nové a změněné funkce
@@ -169,7 +167,7 @@ Kompletní redesign navigačního panelu na styl AutoCAD ViewCube:
 - Implementace klávesových zkratek pro správu vrstev:
     - Přidána podpora pro klávesy Delete a Backspace.
     - Uživatel může nyní okamžitě odstranit vybranou textovou nebo grafickou vrstvu přímo v 3D náhledu.
-    **You do not need to anymore go and find the given layer of text in the sidebar and delete it from there. - hence the commit will be titled quality of life improvement
+    **Díky implementaci klávesových zkratek byla zjednodušena správa vrstev – vybrané objekty lze nyní mazat přímo v 3D pohledu bez nutnosti vyhledávání v sidebaru.
 
 
 

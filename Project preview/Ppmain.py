@@ -1,14 +1,11 @@
-import sys
 import math
-import random
 import json
 import base64
-import numpy as np
-from PySide6 import QtCore, QtGui, QtWidgets, QtOpenGLWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from OpenGL.GL import *
 from OpenGL.GLU import *
-from Ppcolorpalette import ColorSwatch, create_color_palette
+from Ppcolorpalette import create_color_palette
 
 
 class StartMenuDialog(QtWidgets.QDialog):
@@ -194,7 +191,7 @@ class GLWidget(QOpenGLWidget):
         self.card_color = QtGui.QColor("#ffffff")
         
         # Multi-text support
-        self.text_objects = [TextObject("MENDY'S PREMIUM", "front", "#2c3e50")]
+        self.text_objects = [TextObject("Welcome", "front", "#2c3e50")]
         self.selected_obj = None
         self.is_dragging = False
 

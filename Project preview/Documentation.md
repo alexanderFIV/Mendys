@@ -181,4 +181,5 @@ Opravy a technická stabilizace (Code Fixes)
 
 Technické detaily a architektura
 Ukládání projektů probíhá pomocí formátu JSON, kde jsou serializovány veškeré parametry karty (barva, materiál, čip). Textové a grafické vrstvy mají vlastní metody `to_dict()`, přičemž importované obrázky jsou pro zachování integrity projektu převáděny na Base64 řetězce a ukládány přímo do JSONu. Pro efektivní práci s datovými poli a matematické výpočty je využíván `numpy`, zatímco modul `base64` slouží k hladké integraci externích grafických podkladů do uložených projektů. Tato kombinace technologií umožňuje vysoký výkon při 3D náhledu a zároveň snadnou přenositelnost uložených návrhů.
-
+18.04.2026
+**cleanup of useless libraries (currently not like they are litterally useless)

@@ -13,7 +13,7 @@ class StartMenuDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setWindowTitle("3D Preview - Start Menu")
         self.setModal(True)
-        self.resize(300, 320)
+        self.resize(300, 350)
         self.setStyleSheet("""
             QDialog { background-color: #09090b; color: #f4f4f5; }
             QLabel { color: #f4f4f5; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-top: 10px; }
@@ -53,6 +53,12 @@ class StartMenuDialog(QtWidgets.QDialog):
         self.emboss_combo.addItems(["Normal", "Realistic", "Super Realistic"])
         self.emboss_combo.setCurrentText("Realistic")
         layout.addWidget(self.emboss_combo)
+
+        self.iso_link = QtWidgets.QLabel('<a href="https://en.wikipedia.org/wiki/ISO/IEC_7810" style="color: #3b82f6; text-decoration: none;">View ISO Card Standards</a>')
+        self.iso_link.setOpenExternalLinks(True)
+        self.iso_link.setAlignment(QtCore.Qt.AlignCenter)
+        self.iso_link.setStyleSheet("margin-top: 15px; font-size: 10px; font-weight: 600;")
+        layout.addWidget(self.iso_link)
 
         button_layout = QtWidgets.QHBoxLayout()
         self.start_button = QtWidgets.QPushButton("Start")
@@ -1410,6 +1416,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.add_text_widget(obj)
 
         sidebar_layout.addStretch()
+
+        # ISO Reference
+        iso_info_link = QtWidgets.QLabel('<a href="https://en.wikipedia.org/wiki/ISO/IEC_7810" style="color: #3b82f6; text-decoration: none;">ISO 7810 Standard</a>')
+        iso_info_link.setOpenExternalLinks(True)
+        iso_info_link.setAlignment(QtCore.Qt.AlignCenter)
+        iso_info_link.setStyleSheet("font-size: 10px; font-weight: 600; margin-bottom: 5px; color: #71717a;")
+        sidebar_layout.addWidget(iso_info_link)
 
         # Help / Exit
         exit_btn = QtWidgets.QPushButton("Exit Application (ESC)")

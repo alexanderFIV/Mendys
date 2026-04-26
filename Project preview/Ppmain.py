@@ -9,6 +9,10 @@ from Ppcolorpalette import create_color_palette
 
 
 class StartMenuDialog(QtWidgets.QDialog):
+    """
+    Initial configuration dialog shown when the application starts.
+    Allows the user to select window mode, card type, and embossing quality.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("3D Preview - Start Menu")
@@ -53,7 +57,7 @@ class StartMenuDialog(QtWidgets.QDialog):
         self.emboss_combo.addItems(["Normal", "Realistic", "Super Realistic"])
         self.emboss_combo.setCurrentText("Realistic")
         layout.addWidget(self.emboss_combo)
-
+        # ISO Standards Link
         self.iso_link = QtWidgets.QLabel('<a href="https://en.wikipedia.org/wiki/ISO/IEC_7810" style="color: #3b82f6; text-decoration: none;">View ISO Card Standards</a>')
         self.iso_link.setOpenExternalLinks(True)
         self.iso_link.setAlignment(QtCore.Qt.AlignCenter)
@@ -88,20 +92,25 @@ class StartMenuDialog(QtWidgets.QDialog):
 
 
 class TextObject:
+    """
+    Represents a text element placed on the card.
+    Handles text validation, positioning, and styling (standard vs embossed).
+    """
     def __init__(self, text="NEW TEXT", side="front", color="#000000"):
         self.text = self.validate_text(text)
         self.side = side # "front" or "back"
-        self.pos = [0.0, 0.0]
+        self.pos = [0.0, 0.0] # [x, y] in millimeters from the card center
         self.color = QtGui.QColor(color)
         self.font = QtGui.QFont("Segoe UI", 12, QtGui.QFont.Bold)
         self.screen_rect = QtCore.QRect()
-        # New properties for embossing and constraints
-        self.style = "Standard" # "Standard", "Embossed"
-        self.is_physical = False # If true, raised on front, into card on back
+        
+        # New properties for embossing and physical appearance
+        self.style = "Standard" # "Standard" (printed) or "Embossed" (visual effect)
+        self.is_physical = False # If true, creates 3D extrusion on front and indentation on back
         self.border_enabled = False
-        self.width_3d = 10.0 # Approximate width in local units
+        self.width_3d = 10.0 # Approximate width in local units (calculated during texture bake)
         self.height_3d = 5.0 # Approximate height in local units
-        self.tex_3d = None # For Super Realistic 3D extrusion
+        self.tex_3d = None # OpenGL texture ID for Super Realistic 3D extrusion
 
     def to_dict(self):
         return {
@@ -142,15 +151,19 @@ class TextObject:
         return QtCore.QRectF(-hw, -hh, self.width_3d, self.height_3d)
 
 class GraphicObject:
+    """
+    Represents a graphical element (QR code, barcode, or custom image) on the card.
+    """
     def __init__(self, image, side="front", obj_type="custom"):
-        self.image = image
-        self.pos = [0, 0] # mm
+        self.image = image # QImage of the graphic
+        self.pos = [0, 0] # Position in mm from center
         self.side = side
         self.obj_type = obj_type
-        # Default sizes in mm
+        
+        # Default sizes in mm based on industry standards
         if obj_type == "qr": self.size_mm = [20, 20]
         elif obj_type == "barcode": self.size_mm = [35, 15]
-        else: self.size_mm = [25, 25] # Default for custom
+        else: self.size_mm = [25, 25] # Default for custom logo imports
         
         self.width_3d = self.size_mm[0]
         self.height_3d = self.size_mm[1]
@@ -183,27 +196,34 @@ class GraphicObject:
         return obj
 
 class GLWidget(QOpenGLWidget):
+    """
+    Main 3D viewport using OpenGL.
+    Handles rendering the card, processing design elements into textures,
+    and managing user interaction (rotation, zooming, dragging).
+    """
     def __init__(self, card_type="CR80", emboss_quality="Realistic", parent=None):
-        # Initialize the OpenGL widget and default rotation angles
         super().__init__(parent)
-        self.rotation = [20, -30, 0] # Initial attractive angle
+        
+        # View state
+        self.rotation = [20, -30, 0] # Default rotation for a nice 3D perspective
         self.camera_dist = 140.0 
         self.card_type = card_type
         self.set_card_dimensions(card_type)
         self.emboss_quality = emboss_quality
         self.quadric = None
         
-        # Default card color
+        # Appearance state
         self.card_color = QtGui.QColor("#ffffff")
+        self.card_material = "Matte" # Material determines specular reflections and shininess
         
-        # Multi-text support
+        # Design objects
         self.text_objects = [TextObject("Welcome", "front", "#2c3e50")]
+        self.graphic_objects = []
         self.selected_obj = None
         self.is_dragging = False
 
-        # Surface/Material system
-        self.card_material = "Matte" # Matte, Glossy, Metallic, Scratched, Grainy, Frosted
-        self.textures = {} 
+        # Custom branding / Backgrounds
+        self.textures = {} # Procedural textures (scratches, grain)
         self.custom_front_img = None
         self.custom_back_img = None
 
@@ -254,12 +274,16 @@ class GLWidget(QOpenGLWidget):
         self.set_card_dimensions(card_type)
 
     def update_face_textures(self):
-        # Fusing all design elements into 1024x640 textures for each side
-        # This makes text part of the actual material (reacts to GL light)
+        """
+        The 'Magic' step: Fuses all text, graphics, chips, and magstripes into 
+        two high-resolution textures (front and back). 
+        This allows complex design elements to react correctly to 3D lighting.
+        """
         self.makeCurrent()
-        TW, TH = 1024, 640
+        TW, TH = 1024, 640 # Texture resolution (roughly matches card aspect ratio)
         
         for side in ["front", "back"]:
+            # Create a blank image with the card's base color
             img = QtGui.QImage(TW, TH, QtGui.QImage.Format_ARGB32)
             img.fill(self.card_color)
             
@@ -710,22 +734,27 @@ class GLWidget(QOpenGLWidget):
 
         top_pts = []
         # Generate arc points using trigonometry for rounded card corners
-        # top-right arc 0..90
+        # Standard ID-1 cards have a corner radius of 3.18mm
+        
+        # top-right arc 0..90 degrees
         cx, cy = hx - corner_radius, hy - corner_radius
         for i in range(steps_per_corner + 1):
             a = math.radians(0 + (90 / steps_per_corner) * i)
             top_pts.append((cx + corner_radius * math.cos(a), cy + corner_radius * math.sin(a), hz))
-        # top-left arc 90..180
+            
+        # top-left arc 90..180 degrees
         cx, cy = -hx + corner_radius, hy - corner_radius
         for i in range(steps_per_corner + 1):
             a = math.radians(90 + (90 / steps_per_corner) * i)
             top_pts.append((cx + corner_radius * math.cos(a), cy + corner_radius * math.sin(a), hz))
-        # bottom-left arc 180..270
+            
+        # bottom-left arc 180..270 degrees
         cx, cy = -hx + corner_radius, -hy + corner_radius
         for i in range(steps_per_corner + 1):
             a = math.radians(180 + (90 / steps_per_corner) * i)
             top_pts.append((cx + corner_radius * math.cos(a), cy + corner_radius * math.sin(a), hz))
-        # bottom-right arc 270..360
+            
+        # bottom-right arc 270..360 degrees
         cx, cy = hx - corner_radius, -hy + corner_radius
         for i in range(steps_per_corner + 1):
             a = math.radians(270 + (90 / steps_per_corner) * i)
@@ -822,17 +851,18 @@ class GLWidget(QOpenGLWidget):
                 if obj.side == "front" or obj.is_physical:
                     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [1.0, 1.0, 1.0, 1.0])
                     glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
+                    # We use a stack of transparent textured quads to simulate 3D volume (layering)
                     layers = 20
                     thickness = 1.0 
                     for i in range(layers):
                         z_off = hz + 0.05 + (i / layers) * thickness
                         
                         if i == layers - 1:
-                            # TOP FACE: Use the object's actual color
+                            # TOP FACE: Use the object's actual color for the final surface
                             c = obj.color
                             glColor4f(c.redF(), c.greenF(), c.blueF(), 1.0)
                         else:
-                            # SIDES: Use White/Gray for the material side look
+                            # SIDES: Use a neutral bright color to simulate the "silver" or "gold" core look
                             brightness = 0.95 + (i / layers) * 0.05
                             glColor4f(brightness, brightness, brightness, 1.0)
                         
@@ -912,43 +942,43 @@ class GLWidget(QOpenGLWidget):
             pass
 
     def pick_object(self, pos):
-        # 1. Determine which side is facing the camera
-        # Calculated from rotation: normal [0,0,1] transformed
+        """
+        Implements 3D picking: Converts 2D mouse coordinates back to 3D space
+        to determine which design object (text/graphic) the user is clicking on.
+        """
+        # 1. Determine which side is facing the camera using the current rotation normal
         rx = math.radians(self.rotation[0])
         ry = math.radians(self.rotation[1])
-        # The dot product of the front normal shadowed on camera Z is basically:
+        # nz is the Z-component of the transformed surface normal
         nz = math.cos(ry) * math.cos(rx)
         camera_side = "front" if nz > 0 else "back"
         
-        # 2. Get GL matrices for projection
+        # 2. Retrieve OpenGL matrices for the mathematical projection
         modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
         projection = glGetDoublev(GL_PROJECTION_MATRIX)
         viewport = glGetIntegerv(GL_VIEWPORT)
         
-        best_obj = None
-        min_dist = float('inf')
-        
-        # Check both Texts and Graphics
+        # Check both Texts and Graphics, starting from the top-most layer
         all_objs = self.text_objects + self.graphic_objects
         
         for obj in reversed(all_objs):
-            # Only consider objects on the visible side (or physical)
+            # Skip objects on the hidden side unless they are physical (punched through)
             is_phys = hasattr(obj, 'is_physical') and obj.is_physical
             if obj.side != camera_side and not is_phys:
                 continue
             
-            # Project local 3D pos to screen
+            # Project local 3D position [lx, ly, lz] to 2D screen coordinates [sx, sy]
             lx, ly = obj.pos
             lz = (self.card_t/2 + 0.1) if camera_side == "front" else -(self.card_t/2 + 0.1)
             
             try:
                 sx, sy, sz = gluProject(lx, ly, lz, modelview, projection, viewport)
-                sy = viewport[3] - sy
+                sy = viewport[3] - sy # Flip Y since screen 0 is TOP but GL 0 is BOTTOM
                 
                 dx = pos.x() - sx
                 dy = pos.y() - sy
                 
-                # Use cached 3D dimension
+                # Check if click is within the hit box (scaled by camera distance)
                 hit_w = obj.width_3d * (viewport[2] / self.camera_dist / 1.5)
                 hit_h = obj.height_3d * (viewport[3] / self.camera_dist / 1.5)
                 
@@ -1012,42 +1042,43 @@ class GLWidget(QOpenGLWidget):
         self.update()
 
     def mouseMoveEvent(self, event):
+        """
+        Handles mouse movement for both camera rotation and object dragging.
+        """
         pos = event.pos()
         dx = pos.x() - self.last_pos.x()
         dy = pos.y() - self.last_pos.y()
         
-        # Rotation (Right Mouse or no selection) - Much smoother sensitivity (0.15)
+        # 1. CAMERA ROTATION: Triggered by Right Mouse button or Left Click on empty space
         if (event.buttons() & QtCore.Qt.RightButton) or (not self.is_dragging):
-            # Calculate velocity for inertia
+            # Sensitivity scale (0.12 for smooth feel)
             vx = dx * 0.12
             vy = dy * 0.12
             self.rotation[1] += vx
             self.rotation[0] += vy
-            # Store smoothed velocity
+            # Store velocity to enable momentum (inertia) when the mouse is released
             self.rot_velocity = [vx, vy]
             self.update()
 
-        # Dragging (Left Mouse on selected object)
+        # 2. OBJECT DRAGGING: Triggered by Left Click on a selected object
         if (event.buttons() & QtCore.Qt.LeftButton) and self.selected_obj and self.is_dragging:
-            # Scale mouse movement to local mm based on depth
+            # Scale mouse pixels to local card millimeters based on camera depth
             scale = self.camera_dist * 0.002
             
-            # Adjust movement direction based on side
-            # When looking at the back, X is reversed
+            # Reverse X movement when looking at the back side
             rx = math.radians(self.rotation[0])
             ry = math.radians(self.rotation[1])
             nz = math.cos(ry) * math.cos(rx)
             ss = 1.0 if nz > 0 else -1.0
             
             self.selected_obj.pos[0] += dx * scale * ss
-            self.selected_obj.pos[1] -= dy * scale
+            self.selected_obj.pos[1] -= dy * scale # Mouse Y is down, Card Y is up
             
-            # Bounds checking
+            # Keep objects within card boundaries (with a small margin)
             hw, hh = self.card_w/2.0, self.card_h/2.0
             self.selected_obj.pos[0] = max(-hw+5, min(hw-5, self.selected_obj.pos[0]))
             self.selected_obj.pos[1] = max(-hh+5, min(hh-5, self.selected_obj.pos[1]))
             
-            # Request re-bake only if not too laggy
             self.update()
 
         self.last_pos = pos
@@ -1066,10 +1097,11 @@ class TextObjectWidget(QtWidgets.QWidget):
         self.text_obj = text_obj
         self.gl_widget = gl_widget
         
+        # Apply a compact, dark-themed stylesheet specifically for this layer widget
         self.setStyleSheet("""
             QWidget { background-color: #09090b; border: 1px solid #27272a; border-radius: 8px; }
             QLineEdit { background-color: #18181b; border: 1px solid #27272a; color: #fafafa; font-size: 11px; padding: 4px; }
-            QLineEdit:focus { border: 1px solid #3b82f6; }
+            QLineEdit:focus { border: 1px solid #3b82f6; } /* Highlight blue when editing */
             QPushButton { background-color: #27272a; border: 1px solid #27272a; color: white; padding: 5px; border-radius: 4px; font-size: 10px; font-weight: bold; }
             QPushButton:hover { background-color: #3f3f46; border-color: #52525b; }
             QComboBox { background-color: #18181b; border: 1px solid #27272a; color: #fafafa; font-size: 10px; padding: 3px; }
@@ -1094,20 +1126,26 @@ class TextObjectWidget(QtWidgets.QWidget):
         layout.addLayout(top_row)
         
         # Row 2: Basic Controls (Compact)
+        # This row contains quick-access toggles for side, style, border, and color
         ctrl_layout = QtWidgets.QHBoxLayout()
-        ctrl_layout.setSpacing(4)
+        ctrl_layout.setSpacing(4) # Tight spacing for a clean sidebar look
         
+        # Side Selector: Determines if text appears on the Front or Back of the card
         self.side_combo = QtWidgets.QComboBox()
         self.side_combo.addItems(["Front", "Back"])
         self.side_combo.setCurrentText(text_obj.side.capitalize())
         self.side_combo.currentTextChanged.connect(self.on_side_changed)
         self.side_combo.setFixedWidth(60)
+        
+        # SPECIAL CASE: Physical embossing (punched through) always affects both sides,
+        # so we disable the side toggle to prevent logical confusion.
         if text_obj.is_physical:
             self.side_combo.setEnabled(False)
             self.side_combo.setToolTip("Physical embossing appears on both sides")
             self.side_combo.hide()
         ctrl_layout.addWidget(self.side_combo)
         
+        # Style Selector: Toggle between normal printing and the 'Embossed' visual effect
         self.style_combo = QtWidgets.QComboBox()
         self.style_combo.addItems(["Std", "Emboss"])
         self.style_combo.setCurrentText("Std" if text_obj.style == "Standard" else "Emboss")
@@ -1115,17 +1153,20 @@ class TextObjectWidget(QtWidgets.QWidget):
         self.style_combo.setFixedWidth(65)
         ctrl_layout.addWidget(self.style_combo)
         
+        # Border Toggle: Adds a subtle outline to the text for better legibility
         self.border_check = QtWidgets.QCheckBox("Bdr")
         self.border_check.setStyleSheet("color: white; font-size: 10px;")
         self.border_check.setChecked(text_obj.border_enabled)
         self.border_check.stateChanged.connect(self.on_border_changed)
         ctrl_layout.addWidget(self.border_check)
         
+        # Color Button: Launches the QColorDialog to choose text color
         self.color_btn = QtWidgets.QPushButton("Col")
         self.color_btn.clicked.connect(self.on_color_requested)
         self.color_btn.setFixedWidth(32)
         ctrl_layout.addWidget(self.color_btn)
         
+        # Font Button: Launches the QFontDialog to choose typeface and size
         self.font_btn = QtWidgets.QPushButton("Fnt")
         self.font_btn.clicked.connect(self.on_font_requested)
         self.font_btn.setFixedWidth(32)
@@ -1134,17 +1175,23 @@ class TextObjectWidget(QtWidgets.QWidget):
         layout.addLayout(ctrl_layout)
 
     def on_text_changed(self, text):
+        """
+        Updates the 3D text in real-time. Validates to ensure only supported characters are used.
+        """
         clean_text = self.text_obj.validate_text(text)
         if clean_text != text:
-            self.edit.setText(clean_text)
+            self.edit.setText(clean_text) # Prevent invalid chars from appearing in input
         self.text_obj.text = clean_text
-        self.gl_widget.update()
+        self.gl_widget.update() # Trigger 3D viewport re-render
 
     def on_side_changed(self, side_text):
         self.text_obj.side = side_text.lower()
         self.gl_widget.update()
 
     def on_style_changed(self, style_text):
+        """
+        Switches between flat 'Standard' text and the 'Embossed' visual effect.
+        """
         self.text_obj.style = "Standard" if style_text == "Std" else "Embossed"
         self.gl_widget.update()
 
@@ -1153,6 +1200,9 @@ class TextObjectWidget(QtWidgets.QWidget):
         self.gl_widget.update()
 
     def on_color_requested(self):
+        """
+        Opens a color picker to change the text color.
+        """
         color = QtWidgets.QColorDialog.getColor(initial=self.text_obj.color, parent=self)
         if color.isValid():
             self.text_obj.color = color
@@ -1171,6 +1221,10 @@ class TextObjectWidget(QtWidgets.QWidget):
         self.deleteLater()
 
 class MainWindow(QtWidgets.QMainWindow):
+    """
+    Primary application window.
+    Assembles the sidebar configuration panel and the 3D OpenGL viewport.
+    """
     def __init__(self, mode="windowed", card_type="CR80", emboss_quality="Realistic"):
         super().__init__()
         self.setWindowTitle("Mendy's 3D Card Preview")
@@ -1251,7 +1305,7 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # GL Widget - Init early so we can reference it
+        # 1. Initialize the 3D Rendering Widget
         self.gl_widget = GLWidget(card_type, emboss_quality)
 
         # Sidebar
@@ -1281,13 +1335,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.material_combo.currentTextChanged.connect(self.on_material_changed)
         sidebar_layout.addWidget(self.material_combo)
 
-        # Card Color Palette
+        # Card Color Palette Component
         sidebar_layout.addWidget(QtWidgets.QLabel("Card Surface Color"))
         
-        # 7 Basic colors for card surface
+        # Predefined set of professional card base colors
         card_colors = ["#ffffff", "#2c3e50", "#d4af37", "#2980b9", "#c0392b", "#27ae60", "#8e44ad"]
         
-        # Build palette using helper from ColorPalette.py
+        # Build interactive palette using the helper utility
         card_palette_layout = create_color_palette(
             colors=card_colors, 
             callback=self.on_card_color_changed, 
@@ -1311,11 +1365,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.add_text_btn.clicked.connect(self.on_add_text_clicked)
         sidebar_layout.addWidget(self.add_text_btn)
 
-        # Chip Section
+        # Integrated Circuit (Chip) Section
         sidebar_layout.addWidget(QtWidgets.QLabel("Integrated Circuit (Chip)"))
         self.chip_combo = QtWidgets.QComboBox()
         
-        # Build a robust model for the chips with disabled headers
+        # Build a robust model for the chips with disabled category headers
+        # This list includes standard contact chips and various RFID/NFC technologies
         chip_list = [
             "None",
             "-- CONTACT CHIPS --",
@@ -1354,7 +1409,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.chip_combo.currentTextChanged.connect(self.on_chip_type_changed)
         sidebar_layout.addWidget(self.chip_combo)
 
-        # Magstripe Section
+        # Magnetic Stripe Section (ISO 7811)
         sidebar_layout.addWidget(QtWidgets.QLabel("Magnetic Stripe"))
         self.mag_combo = QtWidgets.QComboBox()
         self.mag_combo.addItems(["None", "HiCo (Black)", "LoCo (Brown)"])
@@ -1382,7 +1437,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.add_emboss_btn.clicked.connect(self.on_add_emboss_clicked)
         sidebar_layout.addWidget(self.add_emboss_btn)
         
-        # Save / Load Section
+        # Project Management (Save/Load State as JSON)
         sidebar_layout.addSpacing(10)
         sidebar_layout.addWidget(QtWidgets.QLabel("Project Management"))
         save_layout = QtWidgets.QHBoxLayout()
@@ -1567,6 +1622,10 @@ class MainWindow(QtWidgets.QMainWindow):
             super().keyPressEvent(event)
 
 class ViewCubeHUD(QtWidgets.QWidget):
+    """
+    A Heads-Up Display (HUD) overlay for quick camera navigation.
+    Provides a 3x3 grid for common angles and side switching (Front/Back).
+    """
     def __init__(self, gl_widget, parent=None):
         super().__init__(parent)
         self.gl_widget = gl_widget
